@@ -7035,7 +7035,43 @@
         return false;
       }
     }
+    function sendHttpsJsonRequest(url) {
+      const message = { type: "FETCH_HTTPS_JSON", url };
+      if (typeof browser !== "undefined" && browser.runtime) {
+        return browser.runtime.sendMessage(message).then(function(response) {
+          if (!response || response.ok !== true) {
+            throw new Error(response && response.error || "HTTPS fetch failed");
+          }
+          return response.result;
+        });
+      }
+      if (typeof chrome !== "undefined" && chrome.runtime) {
+        return new Promise(function(resolve, reject) {
+          chrome.runtime.sendMessage(message, function(value) {
+            const error = chrome.runtime && chrome.runtime.lastError;
+            if (error) {
+              reject(new Error(error.message));
+              return;
+            }
+            if (!value || value.ok !== true) {
+              reject(new Error(value && value.error || "HTTPS fetch failed"));
+              return;
+            }
+            resolve(value.result);
+          });
+        });
+      }
+      return Promise.reject(new Error("Browser runtime API is not available"));
+    }
     async function handleRequest(pool, message) {
+      if (message.operation === "httpGet") {
+        const payload2 = message.payload;
+        const normalized = extension.zapHttp && extension.zapHttp.normalizeZapHttpUrl(payload2 && payload2.url);
+        if (!payload2 || Object.keys(payload2).some((key) => key !== "url") || !normalized) {
+          throw new Error("HTTPS request contains an unsupported URL");
+        }
+        return sendHttpsJsonRequest(normalized);
+      }
       const payload = message.payload;
       const relays = validateRelays(payload && payload.relays);
       if (!relays) {
@@ -7171,7 +7207,10 @@
       isAllowedStatusUrl,
       validateFilter,
       validateReactionEvent,
-      validateRelays
+      validateRelays,
+      isAllowedZapHttpUrl: function(value) {
+        return Boolean(extension.zapHttp && extension.zapHttp.isAllowedZapHttpUrl(value));
+      }
     };
   })();
 })();

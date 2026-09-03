@@ -374,7 +374,7 @@
           createDebug6.namespaces = namespaces;
           createDebug6.names = [];
           createDebug6.skips = [];
-          const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(" ", ",").split(",").filter(Boolean);
+          const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(/\s+/g, ",").split(",").filter(Boolean);
           for (const ns of split) {
             if (ns[0] === "-") {
               createDebug6.skips.push(ns.slice(1));
@@ -592,7 +592,7 @@
       function load() {
         let r;
         try {
-          r = exports.storage.getItem("debug");
+          r = exports.storage.getItem("debug") || exports.storage.getItem("DEBUG");
         } catch (error) {
         }
         if (!r && typeof process !== "undefined" && "env" in process) {
@@ -19298,9 +19298,29 @@
     }
     return transport2;
   }
+  async function httpGetJson(url) {
+    const transport2 = getRelayTransport();
+    if (typeof transport2?.httpGet === "function") {
+      return transport2.httpGet(url);
+    }
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(ZAP_HTTP_TIMEOUT_MS)
+    });
+    let json = null;
+    try {
+      json = await response.json();
+    } catch {
+      json = null;
+    }
+    return { status: response.status, json };
+  }
+  var ZAP_HTTP_TIMEOUT_MS;
   var init_relay_transport = __esm({
     "src/common/relay-transport.ts"() {
       "use strict";
+      ZAP_HTTP_TIMEOUT_MS = 1e4;
     }
   });
 
@@ -19486,13 +19506,22 @@
     }
     return null;
   }
-  async function resolveZapProviderInfo(profileMetadata, fetchImpl = fetch) {
+  async function resolveZapProviderInfo(profileMetadata, fetchImpl) {
     try {
       const lnurl = lnurlFromProfileContent(profileMetadata.content || "");
       if (!lnurl) return null;
-      const res = await fetchImpl(lnurl, { signal: AbortSignal.timeout(1e4) });
-      if (!res.ok) return null;
-      const body = await res.json();
+      let body;
+      if (fetchImpl) {
+        const res = await fetchImpl(lnurl, { signal: AbortSignal.timeout(1e4) });
+        if (!res.ok) return null;
+        body = await res.json();
+      } else {
+        const result = await httpGetJson(lnurl);
+        if (result.status < 200 || result.status >= 300 || result.json == null) {
+          return null;
+        }
+        body = result.json;
+      }
       if (!body?.allowsNostr || typeof body.nostrPubkey !== "string" || !body.callback) {
         return null;
       }
@@ -19610,6 +19639,7 @@
       init_esm();
       import_light_bolt11_decoder2 = __toESM(require_bolt11(), 1);
       init_esm2();
+      init_relay_transport();
     }
   });
 
@@ -19697,8 +19727,12 @@
       };
       getBatchedProfileMetadata = async (authorIds, relays) => {
         const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
-        const uncachedIds = authorIds.filter(
-          (id) => !profileCache.has(profileCacheKey(id, relayList))
+        const uncachedIds = Array.from(
+          new Set(
+            authorIds.map((id) => id.toLowerCase()).filter(
+              (id) => !profileCache.has(profileCacheKey(id, relayList))
+            )
+          )
         );
         if (uncachedIds.length === 0) {
           return authorIds.map((id) => ({
@@ -19836,19 +19870,16 @@
           JSON.stringify(zapEvent)
         )}`;
         if (comment) invoiceUrl += `&comment=${encodeURIComponent(comment ?? "")}`;
-        const res = await fetch(invoiceUrl, { method: "GET" });
-        if (!res.ok) {
-          throw new Error(`LNURL request failed: ${res.status} ${res.statusText}`);
+        const { status, json } = await httpGetJson(invoiceUrl);
+        if (status < 200 || status >= 300) {
+          throw new Error(`LNURL request failed: ${status}`);
         }
-        let json;
-        try {
-          json = await res.json();
-        } catch {
+        if (json == null || typeof json !== "object") {
           throw new Error("Invalid JSON from LNURL endpoint");
         }
-        const { pr: invoice, reason, status } = json || {};
+        const { pr: invoice, reason, status: lnurlStatus } = json || {};
         if (invoice) return invoice;
-        if (status === "ERROR") throw new Error(reason ?? "Unable to fetch invoice");
+        if (lnurlStatus === "ERROR") throw new Error(reason ?? "Unable to fetch invoice");
         throw new Error("Unable to fetch invoice");
       };
       generateRandomPrivKey = () => {

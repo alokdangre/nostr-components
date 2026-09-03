@@ -12,6 +12,7 @@
     "https://m.youtube.com/*",
     "https://youtube.com/*",
     "https://us-central1-gr-prod.cloudfunctions.net/*",
+    "https://*/*",
     "wss://relay.damus.io/*",
     "wss://nostr.wine/*",
     "wss://relay.nostr.net/*",
@@ -35,6 +36,7 @@
       ],
       "js": [
         "lib/url.js",
+        "lib/zap-http.js",
         "lib/storage.js",
         "lib/directory.js",
         "lib/relay-client.js",

@@ -11,7 +11,7 @@ import { normalizeURL as normalizeRelayURL } from 'nostr-tools/utils';
 import { normalizeURL } from '../common/utils';
 import { ensureInitialized, signEvent as signEventWithNostrLogin } from '../common/nostr-login-service';
 import { DEFAULT_RELAYS } from '../common/constants';
-import { getRelayTransport } from '../common/relay-transport';
+import { getRelayTransport, httpGetJson } from '../common/relay-transport';
 import {
   resolveZapProviderInfo,
   validateZapReceipt,
@@ -82,9 +82,12 @@ export const getProfileMetadata = async (authorId: string, relays?: string[]) =>
 
 export const getBatchedProfileMetadata = async (authorIds: string[], relays?: string[]) => {
   const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
-  // Filter out already cached profiles
-  const uncachedIds = authorIds.filter(
-    id => !profileCache.has(profileCacheKey(id, relayList)),
+  const uncachedIds = Array.from(
+    new Set(
+      authorIds.map(id => id.toLowerCase()).filter(
+        id => !profileCache.has(profileCacheKey(id, relayList)),
+      ),
+    ),
   );
 
   // If all profiles are cached, return them
@@ -287,19 +290,16 @@ export const fetchInvoice = async ({
   )}`;
   if (comment) invoiceUrl += `&comment=${encodeURIComponent(comment ?? '')}`;
 
-  const res = await fetch(invoiceUrl, { method: 'GET' });
-  if (!res.ok) {
-    throw new Error(`LNURL request failed: ${res.status} ${res.statusText}`);
+  const { status, json } = await httpGetJson(invoiceUrl);
+  if (status < 200 || status >= 300) {
+    throw new Error(`LNURL request failed: ${status}`);
   }
-  let json: any;
-  try {
-    json = await res.json();
-  } catch {
+  if (json == null || typeof json !== 'object') {
     throw new Error('Invalid JSON from LNURL endpoint');
   }
-  const { pr: invoice, reason, status } = json || {};
+  const { pr: invoice, reason, status: lnurlStatus } = json || {};
   if (invoice) return invoice;
-  if (status === 'ERROR') throw new Error(reason ?? 'Unable to fetch invoice');
+  if (lnurlStatus === 'ERROR') throw new Error(reason ?? 'Unable to fetch invoice');
   throw new Error('Unable to fetch invoice');
 };
 

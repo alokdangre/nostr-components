@@ -8,6 +8,7 @@ import { EventEmitter as CspEventEmitter } from '../src/csp-event-emitter.js';
 import { hydrateActionSlot } from '../src/component-hydrator.js';
 
 await import('../lib/url.js');
+await import('../lib/zap-http.js');
 await import('../lib/storage.js');
 await import('../lib/directory.js');
 await import('../lib/relay-client.js');
@@ -263,6 +264,7 @@ describe('Zap action integration', function () {
 
     expect(extension.youtubeDom.extractDeclaredNpub(root)).toBe(recipientNpub);
     expect(queriedSelectors[0]).toContain('ytd-video-owner-renderer');
+    expect(queriedSelectors[0]).toContain('ytd-reel-player-overlay-renderer');
     expect(queriedSelectors[0]).not.toContain('meta');
     expect(queriedSelectors[0]).not.toContain('#description');
   });
@@ -319,6 +321,61 @@ describe('Zap action integration', function () {
     };
 
     expect(extension.youtubeDom.resolveRecipientNpub(root)).toBeNull();
+  });
+
+  it('places Shorts actions on the active reel overlay instead of a watch-page action bar', function () {
+    globalThis.window = {
+      location: {
+        pathname: '/shorts/dQw4w9WgXcQ',
+        href: 'https://www.youtube.com/shorts/dQw4w9WgXcQ'
+      }
+    };
+    const shortsActions = { id: 'shorts-actions' };
+    const watchActions = { id: 'watch-actions' };
+    const root = {
+      querySelector(selector) {
+        if (selector.includes('ytd-reel-video-renderer[is-active]') && selector.endsWith('#actions')) {
+          return shortsActions;
+        }
+        if (selector.includes('top-level-buttons-computed')) return watchActions;
+        return null;
+      }
+    };
+
+    expect(extension.youtubeDom.findActionBar(root)).toBe(shortsActions);
+  });
+
+  it('does not inject into a leftover watch action bar on a Shorts URL', function () {
+    globalThis.window = {
+      location: {
+        pathname: '/shorts/dQw4w9WgXcQ',
+        href: 'https://www.youtube.com/shorts/dQw4w9WgXcQ'
+      }
+    };
+    const root = {
+      querySelector(selector) {
+        if (selector.includes('top-level-buttons-computed')) return { id: 'watch-actions' };
+        return null;
+      }
+    };
+
+    expect(extension.youtubeDom.findActionBar(root)).toBeNull();
+  });
+
+  it('marks Shorts slots for the vertical overlay rail', function () {
+    globalThis.window = {
+      location: { pathname: '/shorts/dQw4w9WgXcQ' }
+    };
+    const action = extension.youtubeDom.createNostrAction(
+      {
+        videoId: 'dQw4w9WgXcQ',
+        canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+      },
+      'light',
+      null
+    );
+
+    expect(action.slot.getAttribute('data-youtube-surface')).toBe('shorts');
   });
 });
 
@@ -634,6 +691,17 @@ describe('X action placement', function () {
     expect(slotRule[0]).toMatch(/min-height:\s*40px/);
     expect(slotRule[0]).toMatch(/margin-left:\s*4px/);
   });
+
+  it('stacks Shorts actions in the vertical overlay rail', function () {
+    const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+    const shortsRule = css.match(
+      /\.nostr-youtube-action-slot\[data-youtube-surface="shorts"\]\s*\{[^}]+\}/
+    );
+
+    expect(shortsRule).not.toBeNull();
+    expect(shortsRule[0]).toMatch(/flex-direction:\s*column/);
+    expect(shortsRule[0]).toMatch(/margin-left:\s*0/);
+  });
 });
 
 describe('CSP-safe component and relay integration', function () {
@@ -678,7 +746,11 @@ describe('CSP-safe component and relay integration', function () {
     const scripts = manifest.content_scripts[0].js;
 
     expect(scripts).toContain('lib/relay-client.js');
+    expect(scripts).toContain('lib/zap-http.js');
     expect(scripts).toContain('lib/component-loader.js');
+    expect(scripts.indexOf('lib/zap-http.js')).toBeLessThan(
+      scripts.indexOf('lib/relay-client.js')
+    );
     expect(scripts.indexOf('lib/relay-client.js')).toBeLessThan(
       scripts.indexOf('lib/component-loader.js')
     );
@@ -698,7 +770,8 @@ describe('CSP-safe component and relay integration', function () {
         'wss://nos.lol/*',
         'wss://nostr-pub.wellorder.net/*',
         'wss://relay.getalby.com/*',
-        'wss://relay.primal.net/*'
+        'wss://relay.primal.net/*',
+        'https://*/*'
       ])
     );
 
@@ -826,6 +899,98 @@ describe('CSP-safe component and relay integration', function () {
       error: 'Nostr component injection requires a validated sender frame'
     });
     expect(executeScript).not.toHaveBeenCalled();
+  });
+
+  it('proxies LNURL JSON through the background for supported senders', async function () {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async function () {
+      return {
+        status: 200,
+        text: async function () {
+          return JSON.stringify({ allowsNostr: true, callback: 'https://ln.example/cb' });
+        }
+      };
+    });
+    globalThis.fetch = fetchMock;
+    let runtimeListener;
+    globalThis.chrome = {
+      runtime: {
+        onMessage: {
+          addListener(listener) {
+            runtimeListener = listener;
+          }
+        }
+      },
+      scripting: { executeScript: vi.fn() }
+    };
+
+    await import('../background.js?https-json');
+    const response = await new Promise(function (resolve) {
+      runtimeListener(
+        {
+          type: 'FETCH_HTTPS_JSON',
+          url: 'https://ln.example/.well-known/lnurlp/alice'
+        },
+        { url: 'https://x.com/jack/status/1' },
+        resolve
+      );
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      result: {
+        status: 200,
+        json: { allowsNostr: true, callback: 'https://ln.example/cb' }
+      }
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://ln.example/.well-known/lnurlp/alice',
+      expect.objectContaining({ method: 'GET', redirect: 'error' })
+    );
+    globalThis.fetch = originalFetch;
+  });
+
+  it('rejects private HTTPS fetch targets and untrusted senders', async function () {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    let runtimeListener;
+    globalThis.chrome = {
+      runtime: {
+        onMessage: {
+          addListener(listener) {
+            runtimeListener = listener;
+          }
+        }
+      },
+      scripting: { executeScript: vi.fn() }
+    };
+
+    await import('../background.js?https-json-reject');
+    const privateHost = await new Promise(function (resolve) {
+      runtimeListener(
+        { type: 'FETCH_HTTPS_JSON', url: 'https://127.0.0.1/.well-known/lnurlp/alice' },
+        { url: 'https://x.com/home' },
+        resolve
+      );
+    });
+    const untrustedSender = await new Promise(function (resolve) {
+      runtimeListener(
+        { type: 'FETCH_HTTPS_JSON', url: 'https://ln.example/.well-known/lnurlp/alice' },
+        { url: 'https://evil.example/page' },
+        resolve
+      );
+    });
+
+    expect(privateHost).toEqual({
+      ok: false,
+      error: 'HTTPS request contains an unsupported URL'
+    });
+    expect(untrustedSender).toEqual({
+      ok: false,
+      error: 'HTTPS fetch is restricted to supported sites'
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    globalThis.fetch = originalFetch;
   });
 
   it('accepts only scoped queries and valid signed kind-17 publishes', async function () {
@@ -1017,6 +1182,70 @@ describe('CSP-safe component and relay integration', function () {
         limit: 100
       })
     ).toBeNull();
+  });
+
+  it('proxies httpGet through the background and rejects loopback URLs', async function () {
+    const listeners = new Map();
+    const responses = [];
+    const pageWindow = {
+      location: { origin: 'https://x.com' },
+      addEventListener(type, listener) {
+        listeners.set(type, listener);
+      },
+      removeEventListener(type) {
+        listeners.delete(type);
+      },
+      postMessage(message) {
+        responses.push(message);
+      }
+    };
+    globalThis.chrome = {
+      runtime: {
+        sendMessage(message, callback) {
+          callback({
+            ok: true,
+            result: { status: 200, json: { pr: 'lnbc1test' } }
+          });
+        }
+      }
+    };
+    const channel = 'd'.repeat(64);
+    const session = extension.relayClient.configure(channel, {
+      pool: { destroy: vi.fn() },
+      window: pageWindow
+    });
+    const onMessage = listeners.get('message');
+
+    await onMessage({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: {
+        source: 'nostr-components-relay-main',
+        channel: channel,
+        requestId: '0'.repeat(32),
+        operation: 'httpGet',
+        payload: { url: 'https://ln.example/.well-known/lnurlp/alice' }
+      }
+    });
+    await onMessage({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: {
+        source: 'nostr-components-relay-main',
+        channel: channel,
+        requestId: '1'.repeat(32),
+        operation: 'httpGet',
+        payload: { url: 'https://127.0.0.1/.well-known/lnurlp/alice' }
+      }
+    });
+
+    expect(responses[0].ok).toBe(true);
+    expect(responses[0].result).toEqual({ status: 200, json: { pr: 'lnbc1test' } });
+    expect(responses[1].ok).toBe(false);
+    expect(extension.zapHttp.isAllowedZapHttpUrl('https://ln.example/.well-known/lnurlp/alice')).toBe(true);
+    expect(extension.zapHttp.isAllowedZapHttpUrl('https://127.0.0.1/.well-known/lnurlp/alice')).toBe(false);
+    expect(extension.zapHttp.isAllowedZapHttpUrl('https://192.168.1.9/.well-known/lnurlp/alice')).toBe(false);
+    session.dispose();
   });
 
   it('returns a persisted YouTube reaction before starting a relay query', async function () {

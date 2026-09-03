@@ -30,6 +30,13 @@
   z-index: 1;
 }
 
+.nostr-youtube-action-slot[data-youtube-surface="shorts"] {
+  flex-direction: column;
+  margin-left: 0;
+  margin-top: 8px;
+  min-height: 0;
+}
+
 .nostr-youtube-action-slot nostr-like-button,
 .nostr-youtube-action-slot nostr-zap-button,
 .nostr-competency-action-slot nostr-like-button,

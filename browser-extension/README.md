@@ -28,8 +28,9 @@ stale third-party mapping cannot redirect a Zap.
 
 This folder ships the same `<nostr-like-button>` and `<nostr-zap-button>` used
 on the web. They run in the page so they can reach `window.nostr`. Host content
-security policies can block relay WebSockets, so scoped queries and Like
-publishes go through a narrow extension bridge instead.
+security policies can block relay WebSockets and Lightning HTTPS, so scoped
+queries, Like publishes, and LNURL/invoice GETs go through a narrow extension
+bridge instead.
 
 Signer public keys stay in memory for the current tab. They are not written to
 `sessionStorage`, which X's page can read. Scrolling therefore does not re-prompt

@@ -3,8 +3,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as zapReceiptModule from '../zap-receipt';
 import {
+  fetchInvoice,
   getBatchedProfileMetadata,
   getProfileMetadata,
+  getZapProviderInfo,
   listenForZapReceipt,
 } from '../zap-utils';
 
@@ -94,6 +96,91 @@ describe('Zap component relay transport', () => {
       kinds: [0],
       limit: 2,
     });
+  });
+
+  it('deduplicates mixed-case authors before the host profile query', async () => {
+    const pubkey = 'ab'.repeat(32);
+    const query = vi.fn().mockResolvedValue([]);
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: { query, publish: vi.fn() },
+    });
+
+    await expect(
+      getBatchedProfileMetadata([pubkey, pubkey.toUpperCase(), pubkey], RELAYS),
+    ).resolves.toEqual([
+      { id: pubkey, profile: null },
+      { id: pubkey.toUpperCase(), profile: null },
+      { id: pubkey, profile: null },
+    ]);
+    expect(query).toHaveBeenCalledWith(RELAYS, {
+      authors: [pubkey],
+      kinds: [0],
+      limit: 1,
+    });
+  });
+
+  it('resolves LNURL metadata through host httpGet', async () => {
+    const httpGet = vi.fn().mockResolvedValue({
+      status: 200,
+      json: {
+        allowsNostr: true,
+        nostrPubkey: 'aa'.repeat(32),
+        callback: 'https://ln.example/callback',
+      },
+    });
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: {
+        query: vi.fn(),
+        publish: vi.fn(),
+        httpGet,
+      },
+    });
+
+    await expect(
+      getZapProviderInfo({
+        id: '11'.repeat(32),
+        pubkey: '22'.repeat(32),
+        kind: 0,
+        created_at: 1,
+        tags: [],
+        content: JSON.stringify({ lud16: 'alice@ln.example' }),
+        sig: '33'.repeat(64),
+      } as any),
+    ).resolves.toMatchObject({
+      lnurl: 'https://ln.example/.well-known/lnurlp/alice',
+      callback: 'https://ln.example/callback',
+    });
+    expect(httpGet).toHaveBeenCalledWith(
+      'https://ln.example/.well-known/lnurlp/alice',
+    );
+  });
+
+  it('fetches invoices through host httpGet', async () => {
+    const httpGet = vi.fn().mockResolvedValue({
+      status: 200,
+      json: { pr: 'lnbc1invoice' },
+    });
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: {
+        query: vi.fn(),
+        publish: vi.fn(),
+        httpGet,
+      },
+    });
+
+    await expect(
+      fetchInvoice({
+        zapEndpoint: 'https://ln.example/callback',
+        amount: 21000,
+        authorId: '44'.repeat(32),
+        normalizedRelays: RELAYS,
+        anon: true,
+      }),
+    ).resolves.toBe('lnbc1invoice');
+    expect(httpGet).toHaveBeenCalledTimes(1);
+    expect(String(httpGet.mock.calls[0][0])).toContain(
+      'https://ln.example/callback?amount=21000&nostr=',
+    );
   });
 
   it('polls for a zap receipt through the host transport and stops on cleanup', async () => {

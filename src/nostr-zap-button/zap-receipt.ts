@@ -4,6 +4,7 @@ import { bech32 } from '@scure/base';
 import { decode as decodeBolt11 } from 'light-bolt11-decoder';
 import type { Event } from 'nostr-tools';
 import { nip57, verifyEvent } from 'nostr-tools';
+import { httpGetJson } from '../common/relay-transport';
 
 export interface ZapProviderInfo {
   lnurl: string;
@@ -57,15 +58,24 @@ export function lnurlFromProfileContent(content: string): string | null {
  */
 export async function resolveZapProviderInfo(
   profileMetadata: Event,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl?: typeof fetch,
 ): Promise<ZapProviderInfo | null> {
   try {
     const lnurl = lnurlFromProfileContent(profileMetadata.content || '');
     if (!lnurl) return null;
 
-    const res = await fetchImpl(lnurl, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return null;
-    const body = await res.json();
+    let body: any;
+    if (fetchImpl) {
+      const res = await fetchImpl(lnurl, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) return null;
+      body = await res.json();
+    } else {
+      const result = await httpGetJson(lnurl);
+      if (result.status < 200 || result.status >= 300 || result.json == null) {
+        return null;
+      }
+      body = result.json;
+    }
 
     if (!body?.allowsNostr || typeof body.nostrPubkey !== 'string' || !body.callback) {
       return null;

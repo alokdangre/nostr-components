@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: MIT
 
+if (typeof importScripts === 'function') {
+  importScripts('lib/zap-http.js');
+}
+
 const DIRECTORY_LOOKUP_ENDPOINT =
   'https://us-central1-gr-prod.cloudfunctions.net/lookupDirectoryHandle';
 const LOOKUP_TIMEOUT_MS = 5000;
+const ZAP_HTTP_TIMEOUT_MS = 10000;
+const ZAP_HTTP_MAX_BYTES = 64 * 1024;
 const RELAY_CHANNEL_PATTERN = /^[0-9a-f]{64}$/;
 
 function getExecutionTarget(sender) {
@@ -89,7 +95,7 @@ function installRelayTransport(channel) {
           pending.delete(requestId);
           reject(new Error('Relay request timed out'));
         },
-        operation === 'publish' ? 12000 : 4000
+        operation === 'publish' || operation === 'httpGet' ? 12000 : 4000
       );
       pending.set(requestId, {
         resolve: resolve,
@@ -123,6 +129,9 @@ function installRelayTransport(channel) {
     },
     publish: function (relays, event) {
       return request('publish', { relays: relays, event: event });
+    },
+    httpGet: function (url) {
+      return request('httpGet', { url: url });
     },
     __dispose: function () {
       window.removeEventListener('message', onMessage);
@@ -196,6 +205,64 @@ async function lookupDirectoryHandle(message) {
   }
 }
 
+function isAllowedRequestSender(sender) {
+  if (!sender || typeof sender.url !== 'string') return false;
+  try {
+    const senderUrl = new URL(sender.url);
+    return (
+      senderUrl.protocol === 'https:' &&
+      senderUrl.port === '' &&
+      [
+        'x.com',
+        'twitter.com',
+        'www.youtube.com',
+        'm.youtube.com',
+        'youtube.com'
+      ].includes(senderUrl.hostname)
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function fetchHttpsJson(message, sender) {
+  if (!isAllowedRequestSender(sender)) {
+    throw new Error('HTTPS fetch is restricted to supported sites');
+  }
+
+  const normalized = globalThis.NostrLikeExtension?.zapHttp?.normalizeZapHttpUrl(message.url);
+  if (!normalized) {
+    throw new Error('HTTPS request contains an unsupported URL');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(function () {
+    controller.abort();
+  }, ZAP_HTTP_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(normalized, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      redirect: 'error',
+      signal: controller.signal
+    });
+    const text = await response.text();
+    if (text.length > ZAP_HTTP_MAX_BYTES) {
+      throw new Error('HTTPS response is too large');
+    }
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch (_error) {
+      throw new Error('Invalid JSON from HTTPS endpoint');
+    }
+    return { status: response.status, json: json };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
   if (!message) {
     return false;
@@ -206,6 +273,8 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     operation = lookupDirectoryHandle(message);
   } else if (message.type === 'INJECT_NOSTR_COMPONENTS') {
     operation = injectComponents(message, sender);
+  } else if (message.type === 'FETCH_HTTPS_JSON') {
+    operation = fetchHttpsJson(message, sender);
   } else {
     return false;
   }

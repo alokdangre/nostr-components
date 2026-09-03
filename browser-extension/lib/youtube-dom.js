@@ -10,12 +10,30 @@
     );
   }
 
+  function isShortsPage() {
+    try {
+      return /^\/shorts\//.test(String(window.location.pathname || ''));
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function findActionBar(root) {
-    const selectors = [
-      '#actions-inner #top-level-buttons-computed',
-      '#top-level-buttons-computed',
-      'ytm-slim-video-action-bar-renderer .slim-video-action-bar-actions'
-    ];
+    const selectors = isShortsPage()
+      ? [
+          'ytd-reel-video-renderer[is-active] ytd-reel-player-overlay-renderer #actions',
+          'ytd-reel-video-renderer[is-active] #actions',
+          'ytd-reel-player-overlay-renderer #actions',
+          'ytm-reel-player-overlay-renderer #actions',
+          'ytm-reel-player-overlay-renderer .reel-player-overlay-actions',
+          'ytm-shorts-player-overlay-renderer #actions',
+          'ytm-slim-video-action-bar-renderer .slim-video-action-bar-actions'
+        ]
+      : [
+          '#actions-inner #top-level-buttons-computed',
+          '#top-level-buttons-computed',
+          'ytm-slim-video-action-bar-renderer .slim-video-action-bar-actions'
+        ];
     for (const selector of selectors) {
       const actionBar = root.querySelector(selector);
       if (actionBar) return actionBar;
@@ -36,6 +54,11 @@
       '#owner a[href^="nostr:npub1"]',
       'ytd-video-owner-renderer ytd-channel-name',
       'ytd-video-owner-renderer a[href^="nostr:npub1"]',
+      'ytd-reel-player-overlay-renderer ytd-channel-name',
+      'ytd-reel-player-overlay-renderer #channel-name',
+      'ytd-reel-player-overlay-renderer a[href^="nostr:npub1"]',
+      'ytm-reel-player-overlay-renderer',
+      'ytm-shorts-player-overlay-renderer',
       'ytm-slim-owner-renderer'
     ].join(','));
     for (const candidate of candidates) {
@@ -70,6 +93,7 @@
     slot.setAttribute('data-video-id', videoInfo.videoId);
     slot.setAttribute('data-status-url', videoInfo.canonicalUrl);
     slot.setAttribute('data-theme', theme);
+    slot.setAttribute('data-youtube-surface', isShortsPage() ? 'shorts' : 'watch');
     if (extension.url.isValidNpub(recipientNpub)) {
       slot.setAttribute('data-recipient-npub', recipientNpub);
     }
