@@ -23,7 +23,11 @@ export interface NostrRelayTransport {
     dislikedCount: number;
     isLiked: boolean;
   }>;
-  publish(relays: string[], event: any): Promise<void>;
+  publish(
+    relays: string[],
+    event: any,
+    actionId?: string,
+  ): Promise<void>;
   /** Host-proxied HTTPS GET for LNURL/invoice JSON when page CSP blocks fetch. */
   httpGet?(url: string): Promise<NostrRelayHttpGetResult>;
 }

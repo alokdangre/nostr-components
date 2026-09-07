@@ -8,6 +8,7 @@ import { normalizeURL } from 'nostr-tools/utils';
   const REQUEST_SOURCE = 'nostr-components-relay-main';
   const RESPONSE_SOURCE = 'nostr-components-relay-extension';
   const CHANNEL_PATTERN = /^[0-9a-f]{64}$/;
+  const ACTION_ID_PATTERN = /^[0-9a-f]{64}$/;
   const REQUEST_ID_PATTERN = /^[0-9a-f]{32}$/;
   const MESSAGE_MAC_PATTERN = /^[0-9a-f]{64}$/;
   const BRIDGE_AUTH_CONTEXT = 'nostr-components-relay-v2';
@@ -44,6 +45,7 @@ import { normalizeURL } from 'nostr-tools/utils';
   let activeSession = null;
   const relayHealth = new Map();
   const recentReactionsByUrl = new Map();
+  const actionContexts = new Map();
 
   function canonicalJson(value) {
     if (value === null) return 'null';
@@ -510,7 +512,7 @@ import { normalizeURL } from 'nostr-tools/utils';
     };
   }
 
-  function validateReactionEvent(event) {
+  function validateReactionEvent(event, expectedUrl) {
     if (
       !event ||
       typeof event !== 'object' ||
@@ -538,12 +540,31 @@ import { normalizeURL } from 'nostr-tools/utils';
       kindTags[0][1] !== 'web' ||
       identifierTags.length !== 1 ||
       !isAllowedContentUrl(identifierTags[0][1]) ||
+      (expectedUrl && identifierTags[0][1] !== expectedUrl) ||
       !verifyEvent(event)
     ) {
       return null;
     }
 
     return event;
+  }
+
+  function registerActionContext(actionId, context) {
+    if (
+      !ACTION_ID_PATTERN.test(String(actionId || '')) ||
+      !context ||
+      (context.kind !== 'x' && context.kind !== 'youtube') ||
+      !isAllowedContentUrl(context.url)
+    ) {
+      throw new Error('Invalid isolated action context');
+    }
+    actionContexts.set(actionId, {
+      kind: context.kind,
+      url: context.url
+    });
+    if (actionContexts.size > 2048) {
+      actionContexts.delete(actionContexts.keys().next().value);
+    }
   }
 
   function isAllowedPageOrigin(origin) {
@@ -683,7 +704,24 @@ import { normalizeURL } from 'nostr-tools/utils';
     }
 
     if (message.operation === 'publish') {
-      const event = validateReactionEvent(payload.event);
+      const actionId = String(payload?.actionId || '');
+      const actionContext = ACTION_ID_PATTERN.test(actionId)
+        ? actionContexts.get(actionId)
+        : null;
+      if (
+        !payload ||
+        Object.keys(payload).some(
+          (key) =>
+            key !== 'relays' && key !== 'event' && key !== 'actionId'
+        ) ||
+        !actionContext
+      ) {
+        throw new Error('Relay publish is not bound to an action');
+      }
+      const event = validateReactionEvent(
+        payload.event,
+        actionContext.url
+      );
       if (!event) {
         throw new Error('Relay request contains an invalid reaction event');
       }
@@ -818,6 +856,7 @@ import { normalizeURL } from 'nostr-tools/utils';
     isAllowedStatusUrl: isAllowedStatusUrl,
     validateFilter: validateFilter,
     validateReactionEvent: validateReactionEvent,
+    registerActionContext: registerActionContext,
     validateRelays: validateRelays,
     isAllowedZapHttpUrl: function (value) {
       return Boolean(extension.zapHttp && extension.zapHttp.isAllowedZapHttpUrl(value));

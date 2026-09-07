@@ -3,7 +3,10 @@
 import { SimplePool } from 'nostr-tools';
 import { normalizeURL } from 'nostr-tools/utils';
 import { ensureInitialized, getPublicKey, signEvent as signEventWithNostrLogin } from '../common/nostr-login-service';
-import { getRelayTransport } from '../common/relay-transport';
+import {
+  getRelayTransport,
+  hasInstalledRelayTransport,
+} from '../common/relay-transport';
 import { netLikesByPubkey } from './like-netting';
 import type { LikeCountResult, LikeDetails } from './like-netting';
 
@@ -145,10 +148,18 @@ export async function publishSignedReaction(
   event: any,
   relays: string[],
   publishWithNdk: () => Promise<unknown>,
+  actionId?: string,
 ): Promise<void> {
   const transport = getRelayTransport();
   if (transport) {
-    await transport.publish(relays, event);
+    if (hasInstalledRelayTransport() && !actionId) {
+      throw new Error('Relay publish is not bound to an action');
+    }
+    if (actionId) {
+      await transport.publish(relays, event, actionId);
+    } else {
+      await transport.publish(relays, event);
+    }
     return;
   }
   await publishWithNdk();

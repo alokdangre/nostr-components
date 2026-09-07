@@ -37,6 +37,14 @@
 
   document.addEventListener(RELAY_BOOTSTRAP_EVENT, receiveBootstrap, true);
 
+  function createActionId() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, function (value) {
+      return value.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
   function registerAction(slot, context) {
     if (
       !slot ||
@@ -46,14 +54,21 @@
     ) {
       throw new Error('Invalid isolated action context');
     }
-    actionContexts.set(slot, {
+    const previous = actionContexts.get(slot);
+    const next = {
+      actionId: previous?.actionId || createActionId(),
       kind: context.kind,
       url: context.url,
       theme: context.theme === 'dark' ? 'dark' : 'light',
       recipientNpub: extension.url.isValidNpub(context.recipientNpub)
         ? context.recipientNpub
         : null
+    };
+    extension.relayClient.registerActionContext(next.actionId, {
+      kind: next.kind,
+      url: next.url
     });
+    actionContexts.set(slot, next);
   }
 
   function updateAction(slot, patch) {

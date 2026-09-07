@@ -414,7 +414,7 @@ export default class NostrLike extends NostrBaseComponent {
       await publishSignedReaction(signedEvent, this.getRelays(), async () => {
         const ndkEvent = new NDKEvent(this.nostrService.getNDK(), signedEvent);
         await ndkEvent.publish();
-      });
+      }, getTrustedActionContext(this)?.actionId);
 
       // Keep action locked until authoritative refresh finishes
       await this.updateLikeCount();
@@ -473,7 +473,7 @@ export default class NostrLike extends NostrBaseComponent {
       await publishSignedReaction(signedEvent, this.getRelays(), async () => {
         const ndkEvent = new NDKEvent(this.nostrService.getNDK(), signedEvent);
         await ndkEvent.publish();
-      });
+      }, getTrustedActionContext(this)?.actionId);
 
       // Keep action locked until authoritative refresh finishes
       await this.updateLikeCount();

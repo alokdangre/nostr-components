@@ -343,8 +343,8 @@ export function createMainRelayTransport(
       request('getCachedLikeState', { relays, url }),
     getLikeState: (relays: string[], url: string) =>
       request('getLikeState', { relays, url }),
-    publish: (relays: string[], event: any) =>
-      request('publish', { relays, event }),
+    publish: (relays: string[], event: any, actionId?: string) =>
+      request('publish', { relays, event, actionId }),
     httpGet: (url: string) => request('httpGet', { url }),
   });
 }

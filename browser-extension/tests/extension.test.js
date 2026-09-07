@@ -235,6 +235,7 @@ describe('Zap action integration', function () {
       hydrateActionSlot(
         slot,
         {
+          actionId: 'c'.repeat(64),
           kind: 'youtube',
           url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
           theme: 'dark',
@@ -263,6 +264,7 @@ describe('Zap action integration', function () {
       'https://www.youtube.com/watch?v=aqz-KE-bpKQ'
     );
     expect(getTrustedActionContext(zap)).toEqual({
+      actionId: 'c'.repeat(64),
       kind: 'youtube',
       url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       recipientNpub: recipientNpub
@@ -1210,12 +1212,13 @@ describe('CSP-safe component and relay integration', function () {
     expect(dispatchedEvent.type).toBe(
       'nostr-components-hydrate:' + hydrationChannel
     );
-    expect(dispatchedEvent.detail).toEqual({
+    expect(dispatchedEvent.detail).toMatchObject({
       kind: 'x',
       url: 'https://x.com/alice/status/42',
       theme: 'dark',
       recipientNpub: nip19.npubEncode('1'.repeat(64))
     });
+    expect(dispatchedEvent.detail.actionId).toMatch(/^[0-9a-f]{64}$/);
 
     extension.componentLoader = previousLoader;
   });
@@ -1369,12 +1372,17 @@ describe('CSP-safe component and relay integration', function () {
     });
     const onMessage = listeners.get('message');
     const relays = ['wss://relay.damus.io'];
+    const actionId = 'c'.repeat(64);
     const filter = {
       kinds: [17],
       '#k': ['web'],
       '#i': ['https://x.com/alokdangre/status/42'],
       limit: 1000
     };
+    extension.relayClient.registerActionContext(actionId, {
+      kind: 'x',
+      url: filter['#i'][0]
+    });
 
     await onMessage({
       source: pageWindow,
@@ -1399,6 +1407,32 @@ describe('CSP-safe component and relay integration', function () {
       },
       new Uint8Array(32).fill(7)
     );
+    const substitutedEvent = finalizeEvent(
+      {
+        kind: 17,
+        content: '+',
+        tags: [
+          ['k', 'web'],
+          ['i', 'https://x.com/mallory/status/99']
+        ],
+        created_at: 1234567890
+      },
+      new Uint8Array(32).fill(8)
+    );
+    await onMessage({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '7'.repeat(32),
+        'publish',
+        {
+          relays: relays,
+          event: substitutedEvent,
+          actionId: actionId
+        }
+      )
+    });
     await onMessage({
       source: pageWindow,
       origin: 'https://x.com',
@@ -1406,7 +1440,7 @@ describe('CSP-safe component and relay integration', function () {
         channel,
         '1'.repeat(32),
         'publish',
-        { relays: relays, event: signedEvent }
+        { relays: relays, event: signedEvent, actionId: actionId }
       )
     });
     await onMessage({
@@ -1443,7 +1477,12 @@ describe('CSP-safe component and relay integration', function () {
         tags: signedEvent.tags
       })
     );
-    expect(responses.map((entry) => entry.message.ok)).toEqual([true, true, true]);
+    expect(responses.map((entry) => entry.message.ok)).toEqual([
+      true,
+      false,
+      true,
+      true
+    ]);
     expect(responses[0].message.result).toEqual({
       totalCount: 1,
       likedCount: 1,
@@ -1451,7 +1490,7 @@ describe('CSP-safe component and relay integration', function () {
       isLiked: true
     });
     expect(JSON.stringify(responses[0].message)).not.toContain('a'.repeat(64));
-    expect(responses[2].message.result).toMatchObject({
+    expect(responses[3].message.result).toMatchObject({
       totalCount: 2,
       isLiked: true
     });
@@ -2183,6 +2222,7 @@ describe('YouTube component integration', function () {
       return hydrateActionSlot(
         slot,
         {
+          actionId: 'd'.repeat(64),
           kind: 'youtube',
           url: slot.dataset.statusUrl,
           theme: slot.dataset.theme,

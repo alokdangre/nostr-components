@@ -5,11 +5,13 @@ import { bindTrustedActionContext } from '../../src/common/trusted-action-contex
 export const COMPONENT_HYDRATION_EVENT_PREFIX = 'nostr-components-hydrate:';
 
 const NPUB_PATTERN = /^npub1[023456789acdefghjklmnpqrstuvwxyz]{58}$/;
+const ACTION_ID_PATTERN = /^[0-9a-f]{64}$/;
 
 function normalizeContext(value) {
   if (
     !value ||
     (value.kind !== 'x' && value.kind !== 'youtube') ||
+    !ACTION_ID_PATTERN.test(String(value.actionId || '')) ||
     typeof value.url !== 'string' ||
     !value.url.startsWith('https://')
   ) {
@@ -21,6 +23,7 @@ function normalizeContext(value) {
       ? value.recipientNpub
       : null;
   return {
+    actionId: value.actionId,
     kind: value.kind,
     url: value.url,
     theme: value.theme === 'dark' ? 'dark' : 'light',
@@ -30,6 +33,7 @@ function normalizeContext(value) {
 
 function bindContext(component, context) {
   bindTrustedActionContext(component, {
+    actionId: context.actionId,
     kind: context.kind,
     url: context.url,
     recipientNpub: context.recipientNpub,

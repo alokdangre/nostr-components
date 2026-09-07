@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 export interface TrustedActionContext {
+  actionId: string;
   kind: 'x' | 'youtube';
   url: string;
   recipientNpub: string | null;
@@ -22,6 +23,7 @@ export function bindTrustedActionContext(
   setContext(
     component,
     freeze({
+      actionId: context.actionId,
       kind: context.kind,
       url: context.url,
       recipientNpub: context.recipientNpub,

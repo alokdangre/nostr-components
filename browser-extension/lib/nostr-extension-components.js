@@ -25403,10 +25403,17 @@ ${url}`;
       pool.close(relays);
     }
   }
-  async function publishSignedReaction(event, relays, publishWithNdk) {
+  async function publishSignedReaction(event, relays, publishWithNdk, actionId) {
     const transport = getRelayTransport();
     if (transport) {
-      await transport.publish(relays, event);
+      if (hasInstalledRelayTransport() && !actionId) {
+        throw new Error("Relay publish is not bound to an action");
+      }
+      if (actionId) {
+        await transport.publish(relays, event, actionId);
+      } else {
+        await transport.publish(relays, event);
+      }
       return;
     }
     await publishWithNdk();
@@ -25831,6 +25838,7 @@ ${url}`;
     setContext(
       component,
       freeze({
+        actionId: context.actionId,
         kind: context.kind,
         url: context.url,
         recipientNpub: context.recipientNpub
@@ -26153,7 +26161,7 @@ ${url}`;
         await publishSignedReaction(signedEvent, this.getRelays(), async () => {
           const ndkEvent = new NDKEvent(this.nostrService.getNDK(), signedEvent);
           await ndkEvent.publish();
-        });
+        }, getTrustedActionContext(this)?.actionId);
         await this.updateLikeCount();
         this.likeActionStatus.set(2 /* Ready */);
       } catch (error) {
@@ -26197,7 +26205,7 @@ ${url}`;
         await publishSignedReaction(signedEvent, this.getRelays(), async () => {
           const ndkEvent = new NDKEvent(this.nostrService.getNDK(), signedEvent);
           await ndkEvent.publish();
-        });
+        }, getTrustedActionContext(this)?.actionId);
         await this.updateLikeCount();
         this.likeActionStatus.set(2 /* Ready */);
       } catch (error) {
@@ -28246,12 +28254,14 @@ ${url}`;
   // browser-extension/src/component-hydrator.js
   var COMPONENT_HYDRATION_EVENT_PREFIX = "nostr-components-hydrate:";
   var NPUB_PATTERN = /^npub1[023456789acdefghjklmnpqrstuvwxyz]{58}$/;
+  var ACTION_ID_PATTERN = /^[0-9a-f]{64}$/;
   function normalizeContext(value) {
-    if (!value || value.kind !== "x" && value.kind !== "youtube" || typeof value.url !== "string" || !value.url.startsWith("https://")) {
+    if (!value || value.kind !== "x" && value.kind !== "youtube" || !ACTION_ID_PATTERN.test(String(value.actionId || "")) || typeof value.url !== "string" || !value.url.startsWith("https://")) {
       return null;
     }
     const recipientNpub = typeof value.recipientNpub === "string" && NPUB_PATTERN.test(value.recipientNpub) ? value.recipientNpub : null;
     return {
+      actionId: value.actionId,
       kind: value.kind,
       url: value.url,
       theme: value.theme === "dark" ? "dark" : "light",
@@ -28260,6 +28270,7 @@ ${url}`;
   }
   function bindContext(component, context) {
     bindTrustedActionContext(component, {
+      actionId: context.actionId,
       kind: context.kind,
       url: context.url,
       recipientNpub: context.recipientNpub
@@ -28575,7 +28586,7 @@ ${url}`;
       query: (relays, filter) => request("query", { relays, filter }),
       getCachedLikeState: (relays, url) => request("getCachedLikeState", { relays, url }),
       getLikeState: (relays, url) => request("getLikeState", { relays, url }),
-      publish: (relays, event) => request("publish", { relays, event }),
+      publish: (relays, event, actionId) => request("publish", { relays, event, actionId }),
       httpGet: (url) => request("httpGet", { url })
     });
   }
