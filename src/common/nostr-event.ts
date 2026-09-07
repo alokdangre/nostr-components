@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import type { Event } from 'nostr-tools';
-import { verifyEvent } from 'nostr-tools';
+import { verifiedSymbol, verifyEvent } from 'nostr-tools';
 
 /**
  * Verify a symbol-free copy so nostr-tools cannot reuse cached verification
@@ -30,6 +30,9 @@ export function cloneVerifiedEvent(value: unknown): Event | null {
   }
 
   const candidate: Event = {
+    // Shadow any inherited nostr-tools cache value while still retaining
+    // Object.prototype: nostr-tools' validator requires `instanceof Object`.
+    [verifiedSymbol]: undefined,
     id: event.id,
     pubkey: event.pubkey,
     created_at: event.created_at,

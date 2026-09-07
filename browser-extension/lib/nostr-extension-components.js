@@ -19502,6 +19502,9 @@
       return null;
     }
     const candidate = {
+      // Shadow any inherited nostr-tools cache value while still retaining
+      // Object.prototype: nostr-tools' validator requires `instanceof Object`.
+      [verifiedSymbol]: void 0,
       id: event.id,
       pubkey: event.pubkey,
       created_at: event.created_at,
