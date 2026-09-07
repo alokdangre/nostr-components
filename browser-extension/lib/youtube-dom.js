@@ -62,7 +62,8 @@
           `ytm-watch[video-id="${videoId}"]`,
           `ytm-watch[data-video-id="${videoId}"]`,
           'ytd-watch-flexy[video-id]',
-          'ytm-watch[video-id]'
+          'ytm-watch[video-id]',
+          'ytm-watch'
         ];
 
     const checked = new Set();
@@ -76,6 +77,9 @@
           lastShortsContainer = container;
           lastShortsVideoId = videoId;
         }
+        return container;
+      }
+      if (!isShortsPage() && selector === 'ytm-watch' && !containerVideoId) {
         return container;
       }
       if (isShortsPage() && !containerVideoId) {

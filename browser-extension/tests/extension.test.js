@@ -599,6 +599,44 @@ describe('Zap action integration', function () {
     ).toBeNull();
   });
 
+  it('accepts the bare mobile watch wrapper for the current watch URL', function () {
+    globalThis.window = {
+      location: {
+        pathname: '/watch',
+        origin: 'https://m.youtube.com'
+      }
+    };
+    const actionBar = { id: 'mobile-actions' };
+    const mobileWatch = {
+      getAttribute() {
+        return null;
+      },
+      querySelector(selector) {
+        return selector.includes('slim-video-action-bar')
+          ? actionBar
+          : null;
+      },
+      querySelectorAll() {
+        return [];
+      }
+    };
+    const root = {
+      querySelector(selector) {
+        return selector === 'ytm-watch' ? mobileWatch : null;
+      }
+    };
+
+    expect(
+      extension.youtubeDom.findVideoContext(root, {
+        videoId: 'dQw4w9WgXcQ',
+        canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+      })
+    ).toEqual({
+      container: mobileWatch,
+      actionBar: actionBar
+    });
+  });
+
   it('resolves controls and recipient from the same video container', function () {
     globalThis.window = {
       location: {
