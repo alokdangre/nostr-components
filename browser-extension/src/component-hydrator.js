@@ -1,11 +1,47 @@
 // SPDX-License-Identifier: MIT
 
-import { bindTrustedActionContext } from '../../src/common/trusted-action-context';
+import {
+  bindTrustedActionContext,
+  revokeTrustedActionContext,
+} from '../../src/common/trusted-action-context';
 
 export const COMPONENT_HYDRATION_EVENT_PREFIX = 'nostr-components-hydrate:';
 
 const NPUB_PATTERN = /^npub1[023456789acdefghjklmnpqrstuvwxyz]{58}$/;
 const ACTION_ID_PATTERN = /^[0-9a-f]{64}$/;
+const ownedComponents = new WeakSet();
+const ownsComponent = ownedComponents.has.bind(ownedComponents);
+const rememberComponent = ownedComponents.add.bind(ownedComponents);
+const forgetComponent = ownedComponents.delete.bind(ownedComponents);
+const elementPrototype = globalThis.Element?.prototype;
+const nativeQuerySelector = elementPrototype?.querySelector;
+const nativeAppendChild = elementPrototype?.appendChild;
+const nativeRemove = elementPrototype?.remove;
+const nativeSetAttribute = elementPrototype?.setAttribute;
+
+function querySelector(element, selector) {
+  return nativeQuerySelector
+    ? nativeQuerySelector.call(element, selector)
+    : element.querySelector(selector);
+}
+
+function appendChild(element, child) {
+  return nativeAppendChild
+    ? nativeAppendChild.call(element, child)
+    : element.appendChild(child);
+}
+
+function discardComponent(component) {
+  forgetComponent(component);
+  revokeTrustedActionContext(component);
+  if (nativeRemove) nativeRemove.call(component);
+  else component.remove?.();
+}
+
+function setAttribute(element, name, value) {
+  if (nativeSetAttribute) nativeSetAttribute.call(element, name, value);
+  else element.setAttribute(name, value);
+}
 
 function normalizeContext(value) {
   if (
@@ -41,11 +77,11 @@ function bindContext(component, context) {
 }
 
 function setCommonAttributes(component, context) {
-  component.setAttribute('url', context.url);
-  component.setAttribute('compact', '');
-  component.setAttribute('data-theme', context.theme);
+  setAttribute(component, 'url', context.url);
+  setAttribute(component, 'compact', '');
+  setAttribute(component, 'data-theme', context.theme);
   if (context.kind === 'youtube') {
-    component.setAttribute('data-surface', 'youtube');
+    setAttribute(component, 'data-surface', 'youtube');
   }
 }
 
@@ -72,22 +108,31 @@ export function hydrateActionSlot(
   const context = normalizeContext(suppliedContext);
   if (!context) return false;
 
-  let like = slot.querySelector('nostr-like-button');
+  let like = querySelector(slot, 'nostr-like-button');
+  if (like && !ownsComponent(like)) {
+    discardComponent(like);
+    like = null;
+  }
   if (!like) {
     like = constructRegisteredElement(registry, 'nostr-like-button');
     if (!like) return false;
+    rememberComponent(like);
     bindContext(like, context);
     setCommonAttributes(like, context);
-    slot.appendChild(like);
+    appendChild(slot, like);
   } else {
     bindContext(like, context);
     setCommonAttributes(like, context);
   }
 
   const recipientNpub = context.recipientNpub;
-  let zap = slot.querySelector('nostr-zap-button');
+  let zap = querySelector(slot, 'nostr-zap-button');
+  if (zap && !ownsComponent(zap)) {
+    discardComponent(zap);
+    zap = null;
+  }
   if (!recipientNpub) {
-    zap?.remove();
+    if (zap) discardComponent(zap);
     return true;
   }
 
@@ -95,11 +140,12 @@ export function hydrateActionSlot(
   if (shouldAppendZap) {
     zap = constructRegisteredElement(registry, 'nostr-zap-button');
     if (!zap) return false;
+    rememberComponent(zap);
   }
   bindContext(zap, context);
   setCommonAttributes(zap, context);
-  zap.setAttribute('npub', recipientNpub);
-  if (shouldAppendZap) slot.appendChild(zap);
+  setAttribute(zap, 'npub', recipientNpub);
+  if (shouldAppendZap) appendChild(slot, zap);
   return true;
 }
 
@@ -113,8 +159,10 @@ export function installComponentHydrator({
   }
 
   const eventName = COMPONENT_HYDRATION_EVENT_PREFIX + channel;
+  const getRegistered = registry?.get?.bind(registry);
+  const capturedRegistry = { get: getRegistered };
   const handler = function (event) {
-    hydrateActionSlot(event.target, event.detail, registry);
+    hydrateActionSlot(event.target, event.detail, capturedRegistry);
   };
   root.addEventListener(eventName, handler, true);
 

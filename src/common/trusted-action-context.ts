@@ -10,6 +10,7 @@ export interface TrustedActionContext {
 const contexts = new WeakMap<HTMLElement, Readonly<TrustedActionContext>>();
 const setContext = contexts.set.bind(contexts);
 const getContext = contexts.get.bind(contexts);
+const deleteContext = contexts.delete.bind(contexts);
 const freeze = Object.freeze.bind(Object);
 
 /**
@@ -35,4 +36,8 @@ export function getTrustedActionContext(
   component: HTMLElement,
 ): Readonly<TrustedActionContext> | null {
   return getContext(component) || null;
+}
+
+export function revokeTrustedActionContext(component: HTMLElement): void {
+  deleteContext(component);
 }

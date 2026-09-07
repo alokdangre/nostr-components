@@ -271,6 +271,64 @@ describe('Zap action integration', function () {
     });
   });
 
+  it('replaces page-created components instead of granting trusted context', function () {
+    const slot = new FakeElement('div');
+    const attackerLike = new FakeElement('nostr-like-button');
+    const attackerZap = new FakeElement('nostr-zap-button');
+    slot.appendChild(attackerLike);
+    slot.appendChild(attackerZap);
+
+    class RegisteredLike extends FakeElement {
+      constructor() {
+        super('nostr-like-button');
+      }
+    }
+    class RegisteredZap extends FakeElement {
+      constructor() {
+        super('nostr-zap-button');
+      }
+    }
+    const registry = new Map([
+      ['nostr-like-button', RegisteredLike],
+      ['nostr-zap-button', RegisteredZap]
+    ]);
+    const context = {
+      actionId: 'e'.repeat(64),
+      kind: 'x',
+      url: 'https://x.com/alice/status/42',
+      theme: 'light',
+      recipientNpub: recipientNpub
+    };
+
+    expect(
+      hydrateActionSlot(slot, context, {
+        get(tagName) {
+          return registry.get(tagName);
+        }
+      })
+    ).toBe(true);
+
+    expect(slot.querySelector('nostr-like-button')).not.toBe(attackerLike);
+    const trustedZap = slot.querySelector('nostr-zap-button');
+    expect(trustedZap).not.toBe(attackerZap);
+    expect(getTrustedActionContext(attackerLike)).toBeNull();
+    expect(getTrustedActionContext(attackerZap)).toBeNull();
+
+    expect(
+      hydrateActionSlot(
+        slot,
+        { ...context, recipientNpub: null },
+        {
+          get(tagName) {
+            return registry.get(tagName);
+          }
+        }
+      )
+    ).toBe(true);
+    expect(slot.querySelector('nostr-zap-button')).toBeNull();
+    expect(getTrustedActionContext(trustedZap)).toBeNull();
+  });
+
   it('adds X Zap only for a verified zappable directory identity', function () {
     const action = extension.dom.createNostrAction(
       {
