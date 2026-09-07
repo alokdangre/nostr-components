@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createContext, runInContext } from 'node:vm';
 import { finalizeEvent, nip19 } from 'nostr-tools';
 
 import { EventEmitter as CspEventEmitter } from '../src/csp-event-emitter.js';
@@ -16,6 +17,23 @@ await import('../lib/dom.js');
 await import('../lib/youtube-dom.js');
 
 const extension = globalThis.NostrLikeExtension;
+
+async function createAuthenticatedRelayRequest(
+  channel,
+  requestId,
+  operation,
+  payload
+) {
+  const message = {
+    source: 'nostr-components-relay-main',
+    requestId: requestId,
+    operation: operation,
+    payload: payload
+  };
+  const authenticator = extension.relayClient.createBridgeAuthenticator(channel);
+  message.mac = await authenticator.signRequest(message);
+  return message;
+}
 
 beforeEach(function () {
   vi.restoreAllMocks();
@@ -808,6 +826,7 @@ describe('CSP-safe component and relay integration', function () {
     expect(scripts).not.toContain('lib/nostr-zap-button.js');
     expect(scripts).not.toContain('lib/nostr-extension-components.js');
     expect(scripts).not.toContain('lib/signer-adapter.js');
+    expect(manifest.content_scripts[0].run_at).toBe('document_start');
     expect(manifest.content_scripts[0].matches).toEqual(
       expect.arrayContaining(['https://www.youtube.com/*', 'https://m.youtube.com/*'])
     );
@@ -865,7 +884,8 @@ describe('CSP-safe component and relay integration', function () {
       const staysOpen = runtimeListener(
         {
           type: 'INJECT_NOSTR_COMPONENTS',
-          channel: 'a'.repeat(64)
+          channel: 'a'.repeat(64),
+          hydrationChannel: 'b'.repeat(64)
         },
         { tab: { id: 87 }, frameId: 0, url: 'https://x.com/home' },
         resolve
@@ -879,13 +899,109 @@ describe('CSP-safe component and relay integration', function () {
       target: { tabId: 87, frameIds: [0] },
       world: 'MAIN',
       func: expect.any(Function),
-      args: ['a'.repeat(64)]
+      args: ['a'.repeat(64), 'b'.repeat(64)]
     });
     expect(executeScript.mock.calls[1][0]).toEqual({
       target: { tabId: 87, frameIds: [0] },
       world: 'MAIN',
       files: ['lib/nostr-extension-components.js']
     });
+
+    const installTransport = executeScript.mock.calls[0][0].func;
+    const pageWindow = {
+      location: { origin: 'https://x.com' },
+      addEventListener: vi.fn(),
+      postMessage: vi.fn()
+    };
+    const context = createContext({
+      crypto: globalThis.crypto,
+      TextEncoder: globalThis.TextEncoder,
+      Uint8Array: globalThis.Uint8Array,
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      window: pageWindow
+    });
+    const invocation =
+      '(' +
+      installTransport.toString() +
+      ')(' +
+      JSON.stringify('a'.repeat(64)) +
+      ',' +
+      JSON.stringify('b'.repeat(64)) +
+      ')';
+    runInContext(invocation, context);
+
+    const descriptor = Object.getOwnPropertyDescriptor(
+      context,
+      '__nostrComponentsRelayTransport'
+    );
+    expect(descriptor).toMatchObject({
+      writable: false,
+      configurable: false,
+      enumerable: false
+    });
+    expect(Object.isFrozen(descriptor.value)).toBe(true);
+    expect(descriptor.value).not.toHaveProperty('__channel');
+    expect(descriptor.value).toHaveProperty('hydrationChannel', 'b'.repeat(64));
+
+    const requestPromise = descriptor.value.httpGet(
+      'https://ln.example/.well-known/lnurlp/alice'
+    );
+    for (
+      let attempt = 0;
+      attempt < 20 && pageWindow.postMessage.mock.calls.length === 0;
+      attempt += 1
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    const requestMessage = pageWindow.postMessage.mock.calls[0][0];
+    const authenticator = extension.relayClient.createBridgeAuthenticator(
+      'a'.repeat(64)
+    );
+    const replayedResponse = {
+      source: 'nostr-components-relay-extension',
+      requestId: requestMessage.requestId,
+      requestMac: 'f'.repeat(64),
+      ok: true,
+      result: { status: 200, json: { pr: 'lnbc1replayed' } }
+    };
+    replayedResponse.mac = await authenticator.signResponse(replayedResponse);
+    const responseHandler = pageWindow.addEventListener.mock.calls[0][1];
+    let requestSettled = false;
+    void requestPromise.then(() => {
+      requestSettled = true;
+    });
+    await responseHandler({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: replayedResponse
+    });
+    await Promise.resolve();
+    expect(requestSettled).toBe(false);
+
+    const relayResponse = {
+      source: 'nostr-components-relay-extension',
+      requestId: requestMessage.requestId,
+      requestMac: requestMessage.mac,
+      ok: true,
+      result: { status: 200, json: { pr: 'lnbc1original' } }
+    };
+    relayResponse.mac = await authenticator.signResponse(relayResponse);
+    const handling = responseHandler({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: relayResponse
+    });
+    relayResponse.result.json.pr = 'lnbc1attacker';
+
+    await handling;
+    await expect(requestPromise).resolves.toEqual({
+      status: 200,
+      json: { pr: 'lnbc1original' }
+    });
+    expect(() => runInContext(invocation, context)).toThrow(
+      'Relay transport slot is already locked'
+    );
   });
 
   it("allows component injection in YouTube's validated top-level frame", async function () {
@@ -907,7 +1023,11 @@ describe('CSP-safe component and relay integration', function () {
     await import('../background.js?youtube-injection');
     const response = await new Promise(function (resolve) {
       runtimeListener(
-        { type: 'INJECT_NOSTR_COMPONENTS', channel: 'c'.repeat(64) },
+        {
+          type: 'INJECT_NOSTR_COMPONENTS',
+          channel: 'c'.repeat(64),
+          hydrationChannel: 'd'.repeat(64)
+        },
         { tab: { id: 88 }, frameId: 0, url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
         resolve
       );
@@ -937,7 +1057,8 @@ describe('CSP-safe component and relay integration', function () {
       runtimeListener(
         {
           type: 'INJECT_NOSTR_COMPONENTS',
-          channel: 'a'.repeat(64)
+          channel: 'a'.repeat(64),
+          hydrationChannel: 'b'.repeat(64)
         },
         { tab: { id: 87 }, url: 'https://x.com/home' },
         resolve
@@ -1110,13 +1231,12 @@ describe('CSP-safe component and relay integration', function () {
     await onMessage({
       source: pageWindow,
       origin: 'https://x.com',
-      data: {
-        source: 'nostr-components-relay-main',
-        channel: channel,
-        requestId: '0'.repeat(32),
-        operation: 'getLikeState',
-        payload: { relays: relays, url: filter['#i'][0] }
-      }
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '0'.repeat(32),
+        'getLikeState',
+        { relays: relays, url: filter['#i'][0] }
+      )
     });
 
     const signedEvent = finalizeEvent(
@@ -1134,24 +1254,22 @@ describe('CSP-safe component and relay integration', function () {
     await onMessage({
       source: pageWindow,
       origin: 'https://x.com',
-      data: {
-        source: 'nostr-components-relay-main',
-        channel: channel,
-        requestId: '1'.repeat(32),
-        operation: 'publish',
-        payload: { relays: relays, event: signedEvent }
-      }
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '1'.repeat(32),
+        'publish',
+        { relays: relays, event: signedEvent }
+      )
     });
     await onMessage({
       source: pageWindow,
       origin: 'https://x.com',
-      data: {
-        source: 'nostr-components-relay-main',
-        channel: channel,
-        requestId: '2'.repeat(32),
-        operation: 'getLikeState',
-        payload: { relays: relays, url: filter['#i'][0] }
-      }
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '2'.repeat(32),
+        'getLikeState',
+        { relays: relays, url: filter['#i'][0] }
+      )
     });
 
     const normalizedRelays = ['wss://relay.damus.io/'];
@@ -1167,7 +1285,16 @@ describe('CSP-safe component and relay integration', function () {
       ],
       expect.objectContaining({ maxWait: 2500 })
     );
-    expect(pool.publish).toHaveBeenCalledWith(normalizedRelays, signedEvent);
+    expect(pool.publish).toHaveBeenCalledWith(
+      normalizedRelays,
+      expect.objectContaining({
+        id: signedEvent.id,
+        pubkey: signedEvent.pubkey,
+        sig: signedEvent.sig,
+        content: signedEvent.content,
+        tags: signedEvent.tags
+      })
+    );
     expect(responses.map((entry) => entry.message.ok)).toEqual([true, true, true]);
     expect(responses[0].message.result).toEqual({
       totalCount: 1,
@@ -1180,6 +1307,12 @@ describe('CSP-safe component and relay integration', function () {
       totalCount: 2,
       isLiked: true
     });
+    expect(
+      await extension.relayClient
+        .createBridgeAuthenticator(channel)
+        .verifyResponse(responses[0].message)
+    ).toBe(true);
+    expect(responses.every((entry) => !('channel' in entry.message))).toBe(true);
     expect(extension.storage.setKnownPubkey).toHaveBeenCalledWith(signedEvent.pubkey);
     expect(responses.every((entry) => entry.targetOrigin === 'https://x.com')).toBe(true);
     expect(extension.relayClient.validateFilter({ ...filter, kinds: [1] })).toBeNull();
@@ -1271,27 +1404,51 @@ describe('CSP-safe component and relay integration', function () {
       origin: 'https://x.com',
       data: {
         source: 'nostr-components-relay-main',
-        channel: channel,
-        requestId: '0'.repeat(32),
+        requestId: 'f'.repeat(32),
         operation: 'httpGet',
-        payload: { url: 'https://ln.example/.well-known/lnurlp/alice' }
+        payload: { url: 'https://ln.example/.well-known/lnurlp/alice' },
+        mac: '0'.repeat(64)
       }
+    });
+    expect(responses).toEqual([]);
+
+    await onMessage({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '0'.repeat(32),
+        'httpGet',
+        { url: 'https://ln.example/.well-known/lnurlp/alice' }
+      )
     });
     await onMessage({
       source: pageWindow,
       origin: 'https://x.com',
-      data: {
-        source: 'nostr-components-relay-main',
-        channel: channel,
-        requestId: '1'.repeat(32),
-        operation: 'httpGet',
-        payload: { url: 'https://127.0.0.1/.well-known/lnurlp/alice' }
-      }
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '1'.repeat(32),
+        'httpGet',
+        { url: 'https://127.0.0.1/.well-known/lnurlp/alice' }
+      )
     });
 
     expect(responses[0].ok).toBe(true);
     expect(responses[0].result).toEqual({ status: 200, json: { pr: 'lnbc1test' } });
     expect(responses[1].ok).toBe(false);
+    expect(
+      await extension.relayClient
+        .createBridgeAuthenticator(channel)
+        .verifyResponse(responses[0])
+    ).toBe(true);
+    expect(
+      await extension.relayClient
+        .createBridgeAuthenticator(channel)
+        .verifyResponse({
+          ...responses[0],
+          result: { status: 200, json: { pr: 'lnbc1attacker' } }
+        })
+    ).toBe(false);
     expect(extension.zapHttp.isAllowedZapHttpUrl('https://ln.example/.well-known/lnurlp/alice')).toBe(true);
     expect(extension.zapHttp.isAllowedZapHttpUrl('https://127.0.0.1/.well-known/lnurlp/alice')).toBe(false);
     expect(extension.zapHttp.isAllowedZapHttpUrl('https://192.168.1.9/.well-known/lnurlp/alice')).toBe(false);
@@ -1348,16 +1505,15 @@ describe('CSP-safe component and relay integration', function () {
     await listeners.get('message')({
       source: pageWindow,
       origin: 'https://www.youtube.com',
-      data: {
-        source: 'nostr-components-relay-main',
-        channel: channel,
-        requestId: '8'.repeat(32),
-        operation: 'getCachedLikeState',
-        payload: {
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '8'.repeat(32),
+        'getCachedLikeState',
+        {
           relays: ['wss://relay.damus.io'],
           url: videoUrl
         }
-      }
+      )
     });
 
     expect(responses[0]).toMatchObject({

@@ -12,6 +12,7 @@ import { normalizeURL } from '../common/utils';
 import { ensureInitialized, signEvent as signEventWithNostrLogin } from '../common/nostr-login-service';
 import { DEFAULT_RELAYS } from '../common/constants';
 import { getRelayTransport, httpGetJson } from '../common/relay-transport';
+import { cloneVerifiedEvent } from '../common/nostr-event';
 import {
   resolveZapProviderInfo,
   validateZapReceipt,
@@ -49,6 +50,21 @@ const profileCacheKey = (authorId: string, relays: string[]) => {
   return `${authorId.toLowerCase()}|${normalizedRelays.join(',')}`;
 };
 
+const getVerifiedProfileEvent = (
+  event: unknown,
+  expectedAuthorId: string,
+): Event | null => {
+  const profile = cloneVerifiedEvent(event);
+  if (!profile) return null;
+  if (
+    profile.kind !== 0 ||
+    profile.pubkey.toLowerCase() !== expectedAuthorId.toLowerCase()
+  ) {
+    return null;
+  }
+  return profile;
+};
+
 export const getProfileMetadata = async (authorId: string, relays?: string[]) => {
   const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
   const cacheKey = profileCacheKey(authorId, relayList);
@@ -62,7 +78,15 @@ export const getProfileMetadata = async (authorId: string, relays?: string[]) =>
       kinds: [0],
       limit: 1,
     });
-    const event = [...events].sort((left, right) => right.created_at - left.created_at)[0] || null;
+    const event =
+      [...events]
+        .map(candidate => getVerifiedProfileEvent(candidate, authorId))
+        .filter((candidate): candidate is Event => candidate !== null)
+        .sort(
+          (left, right) =>
+            right.created_at - left.created_at ||
+            right.id.localeCompare(left.id),
+        )[0] || null;
     if (event) profileCache.set(cacheKey, event);
     return event;
   }
@@ -73,8 +97,9 @@ export const getProfileMetadata = async (authorId: string, relays?: string[]) =>
       authors: [authorId],
       kinds: [0],
     });
-    if (event) profileCache.set(cacheKey, event);
-    return event;
+    const verifiedEvent = getVerifiedProfileEvent(event, authorId);
+    if (verifiedEvent) profileCache.set(cacheKey, verifiedEvent);
+    return verifiedEvent;
   } finally {
     pool.close(relayList);
   }
@@ -106,10 +131,13 @@ export const getBatchedProfileMetadata = async (authorIds: string[], relays?: st
       limit: Math.min(uncachedIds.length, 50),
     });
     events.forEach(event => {
-      const cacheKey = profileCacheKey(event.pubkey, relayList);
+      const verifiedEvent = getVerifiedProfileEvent(event, event?.pubkey || '');
+      if (!verifiedEvent) return;
+      if (!uncachedIds.includes(verifiedEvent.pubkey.toLowerCase())) return;
+      const cacheKey = profileCacheKey(verifiedEvent.pubkey, relayList);
       const cached = profileCache.get(cacheKey);
-      if (!cached || event.created_at > cached.created_at) {
-        profileCache.set(cacheKey, event);
+      if (!cached || verifiedEvent.created_at > cached.created_at) {
+        profileCache.set(cacheKey, verifiedEvent);
       }
     });
     return authorIds.map(id => ({
@@ -129,7 +157,13 @@ export const getBatchedProfileMetadata = async (authorIds: string[], relays?: st
 
     // Cache the fetched profiles
     events.forEach(event => {
-      profileCache.set(profileCacheKey(event.pubkey, relayList), event);
+      const verifiedEvent = getVerifiedProfileEvent(event, event?.pubkey || '');
+      if (!verifiedEvent) return;
+      if (!uncachedIds.includes(verifiedEvent.pubkey.toLowerCase())) return;
+      profileCache.set(
+        profileCacheKey(verifiedEvent.pubkey, relayList),
+        verifiedEvent,
+      );
     });
 
     // Combine cached and newly fetched profiles
@@ -161,13 +195,18 @@ export const getZapEndpoint = async (profileMetadata: any) => {
 export const getZapProviderInfo = async (
   profileMetadata: Event,
 ): Promise<ZapProviderInfo | null> => {
-  const cacheKey = profileMetadata.pubkey || profileMetadata.id || '';
+  const verifiedProfile = getVerifiedProfileEvent(
+    profileMetadata,
+    profileMetadata?.pubkey || '',
+  );
+  if (!verifiedProfile) return null;
+  const cacheKey = verifiedProfile.pubkey || verifiedProfile.id || '';
   const cached = cacheKey ? zapProviderCache[cacheKey] : undefined;
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
   }
 
-  const provider = await resolveZapProviderInfo(profileMetadata);
+  const provider = await resolveZapProviderInfo(verifiedProfile);
   if (cacheKey) {
     const ttl = provider ? ZAP_PROVIDER_CACHE_TTL_MS : ZAP_PROVIDER_NEGATIVE_TTL_MS;
     zapProviderCache[cacheKey] = {

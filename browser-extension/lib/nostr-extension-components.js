@@ -19481,6 +19481,37 @@
     }
   });
 
+  // src/common/nostr-event.ts
+  function cloneVerifiedEvent(value) {
+    if (!value || typeof value !== "object") return null;
+    const event = value;
+    if (typeof event.id !== "string" || typeof event.pubkey !== "string" || typeof event.created_at !== "number" || !Number.isInteger(event.created_at) || typeof event.kind !== "number" || !Number.isInteger(event.kind) || typeof event.content !== "string" || typeof event.sig !== "string" || !Array.isArray(event.tags) || event.tags.some(
+      (tag) => !Array.isArray(tag) || tag.some((value2) => typeof value2 !== "string")
+    )) {
+      return null;
+    }
+    const candidate = {
+      id: event.id,
+      pubkey: event.pubkey,
+      created_at: event.created_at,
+      kind: event.kind,
+      tags: event.tags.map((tag) => [...tag]),
+      content: event.content,
+      sig: event.sig
+    };
+    try {
+      return verifyEvent(candidate) ? candidate : null;
+    } catch {
+      return null;
+    }
+  }
+  var init_nostr_event = __esm({
+    "src/common/nostr-event.ts"() {
+      "use strict";
+      init_esm2();
+    }
+  });
+
   // src/nostr-zap-button/zap-receipt.ts
   function getTagValue(tags, name) {
     const tag = tags?.find((t) => t[0] === name && t[1]);
@@ -19508,7 +19539,11 @@
   }
   async function resolveZapProviderInfo(profileMetadata, fetchImpl) {
     try {
-      const lnurl = lnurlFromProfileContent(profileMetadata.content || "");
+      const verifiedProfile = cloneVerifiedEvent(profileMetadata);
+      if (!verifiedProfile || verifiedProfile.kind !== 0) {
+        return null;
+      }
+      const lnurl = lnurlFromProfileContent(verifiedProfile.content || "");
       if (!lnurl) return null;
       let body;
       if (fetchImpl) {
@@ -19570,17 +19605,18 @@
     if (receipt.kind !== 9735) {
       return { ok: false, reason: "not-kind-9735" };
     }
-    if (!verifyEvent(receipt)) {
+    const verifiedReceipt = cloneVerifiedEvent(receipt);
+    if (!verifiedReceipt) {
       return { ok: false, reason: "receipt-sig" };
     }
-    if (receipt.pubkey.toLowerCase() !== opts.provider.nostrPubkey.toLowerCase()) {
+    if (verifiedReceipt.pubkey.toLowerCase() !== opts.provider.nostrPubkey.toLowerCase()) {
       return { ok: false, reason: "receipt-pubkey-mismatch" };
     }
-    const receiptP = getTagValue(receipt.tags, "p");
+    const receiptP = getTagValue(verifiedReceipt.tags, "p");
     if (!receiptP || receiptP.toLowerCase() !== opts.recipientPubkey.toLowerCase()) {
       return { ok: false, reason: "receipt-p-mismatch" };
     }
-    const description = getTagValue(receipt.tags, "description");
+    const description = getTagValue(verifiedReceipt.tags, "description");
     if (!description) {
       return { ok: false, reason: "missing-description" };
     }
@@ -19588,23 +19624,24 @@
     if (zapRequestError) {
       return { ok: false, reason: `invalid-zap-request:${zapRequestError}` };
     }
-    let zapRequest;
+    let parsedZapRequest;
     try {
-      zapRequest = JSON.parse(description);
+      parsedZapRequest = JSON.parse(description);
     } catch {
       return { ok: false, reason: "description-json" };
     }
-    if (zapRequest.kind !== 9734) {
+    if (parsedZapRequest.kind !== 9734) {
       return { ok: false, reason: "zap-request-kind" };
     }
-    if (!verifyEvent(zapRequest)) {
+    const zapRequest = cloneVerifiedEvent(parsedZapRequest);
+    if (!zapRequest) {
       return { ok: false, reason: "zap-request-sig" };
     }
     const requestP = getTagValue(zapRequest.tags, "p");
     if (!requestP || requestP.toLowerCase() !== opts.recipientPubkey.toLowerCase()) {
       return { ok: false, reason: "zap-request-p-mismatch" };
     }
-    const bolt11 = getTagValue(receipt.tags, "bolt11");
+    const bolt11 = getTagValue(verifiedReceipt.tags, "bolt11");
     if (!bolt11) {
       return { ok: false, reason: "missing-bolt11" };
     }
@@ -19639,6 +19676,7 @@
       init_esm();
       import_light_bolt11_decoder2 = __toESM(require_bolt11(), 1);
       init_esm2();
+      init_nostr_event();
       init_relay_transport();
     }
   });
@@ -19667,7 +19705,7 @@
       return null;
     }
   }
-  var profileCache, ZAP_PROVIDER_CACHE_TTL_MS, ZAP_PROVIDER_NEGATIVE_TTL_MS, ZAP_RECEIPT_POLL_TIMEOUT_MS, zapProviderCache, profileCacheKey, getProfileMetadata, getBatchedProfileMetadata, extractProfileMetadataContent, getZapEndpoint2, getZapProviderInfo, buildUrlATag, signEvent2, makeZapEvent, fetchInvoice, generateRandomPrivKey, isNip07ExtAvailable, fetchTotalZapAmount, listenForZapReceipt;
+  var profileCache, ZAP_PROVIDER_CACHE_TTL_MS, ZAP_PROVIDER_NEGATIVE_TTL_MS, ZAP_RECEIPT_POLL_TIMEOUT_MS, zapProviderCache, profileCacheKey, getVerifiedProfileEvent, getProfileMetadata, getBatchedProfileMetadata, extractProfileMetadataContent, getZapEndpoint2, getZapProviderInfo, buildUrlATag, signEvent2, makeZapEvent, fetchInvoice, generateRandomPrivKey, isNip07ExtAvailable, fetchTotalZapAmount, listenForZapReceipt;
   var init_zap_utils = __esm({
     "src/nostr-zap-button/zap-utils.ts"() {
       "use strict";
@@ -19677,6 +19715,7 @@
       init_nostr_login_service();
       init_constants();
       init_relay_transport();
+      init_nostr_event();
       init_zap_receipt();
       profileCache = /* @__PURE__ */ new Map();
       ZAP_PROVIDER_CACHE_TTL_MS = 5 * 60 * 1e3;
@@ -19697,6 +19736,14 @@
         ).sort();
         return `${authorId.toLowerCase()}|${normalizedRelays.join(",")}`;
       };
+      getVerifiedProfileEvent = (event, expectedAuthorId) => {
+        const profile = cloneVerifiedEvent(event);
+        if (!profile) return null;
+        if (profile.kind !== 0 || profile.pubkey.toLowerCase() !== expectedAuthorId.toLowerCase()) {
+          return null;
+        }
+        return profile;
+      };
       getProfileMetadata = async (authorId, relays) => {
         const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
         const cacheKey = profileCacheKey(authorId, relayList);
@@ -19709,7 +19756,9 @@
             kinds: [0],
             limit: 1
           });
-          const event = [...events].sort((left, right) => right.created_at - left.created_at)[0] || null;
+          const event = [...events].map((candidate) => getVerifiedProfileEvent(candidate, authorId)).filter((candidate) => candidate !== null).sort(
+            (left, right) => right.created_at - left.created_at || right.id.localeCompare(left.id)
+          )[0] || null;
           if (event) profileCache.set(cacheKey, event);
           return event;
         }
@@ -19719,8 +19768,9 @@
             authors: [authorId],
             kinds: [0]
           });
-          if (event) profileCache.set(cacheKey, event);
-          return event;
+          const verifiedEvent = getVerifiedProfileEvent(event, authorId);
+          if (verifiedEvent) profileCache.set(cacheKey, verifiedEvent);
+          return verifiedEvent;
         } finally {
           pool.close(relayList);
         }
@@ -19748,10 +19798,13 @@
             limit: Math.min(uncachedIds.length, 50)
           });
           events.forEach((event) => {
-            const cacheKey = profileCacheKey(event.pubkey, relayList);
+            const verifiedEvent = getVerifiedProfileEvent(event, event?.pubkey || "");
+            if (!verifiedEvent) return;
+            if (!uncachedIds.includes(verifiedEvent.pubkey.toLowerCase())) return;
+            const cacheKey = profileCacheKey(verifiedEvent.pubkey, relayList);
             const cached = profileCache.get(cacheKey);
-            if (!cached || event.created_at > cached.created_at) {
-              profileCache.set(cacheKey, event);
+            if (!cached || verifiedEvent.created_at > cached.created_at) {
+              profileCache.set(cacheKey, verifiedEvent);
             }
           });
           return authorIds.map((id) => ({
@@ -19767,7 +19820,13 @@
             limit: Math.min(uncachedIds.length, 50)
           });
           events.forEach((event) => {
-            profileCache.set(profileCacheKey(event.pubkey, relayList), event);
+            const verifiedEvent = getVerifiedProfileEvent(event, event?.pubkey || "");
+            if (!verifiedEvent) return;
+            if (!uncachedIds.includes(verifiedEvent.pubkey.toLowerCase())) return;
+            profileCache.set(
+              profileCacheKey(verifiedEvent.pubkey, relayList),
+              verifiedEvent
+            );
           });
           const allProfiles = authorIds.map((id) => ({
             id,
@@ -19791,12 +19850,17 @@
         return provider.callback;
       };
       getZapProviderInfo = async (profileMetadata) => {
-        const cacheKey = profileMetadata.pubkey || profileMetadata.id || "";
+        const verifiedProfile = getVerifiedProfileEvent(
+          profileMetadata,
+          profileMetadata?.pubkey || ""
+        );
+        if (!verifiedProfile) return null;
+        const cacheKey = verifiedProfile.pubkey || verifiedProfile.id || "";
         const cached = cacheKey ? zapProviderCache[cacheKey] : void 0;
         if (cached && cached.expiresAt > Date.now()) {
           return cached.value;
         }
-        const provider = await resolveZapProviderInfo(profileMetadata);
+        const provider = await resolveZapProviderInfo(verifiedProfile);
         if (cacheKey) {
           const ttl = provider ? ZAP_PROVIDER_CACHE_TTL_MS : ZAP_PROVIDER_NEGATIVE_TTL_MS;
           zapProviderCache[cacheKey] = {
@@ -28155,10 +28219,10 @@ ${url}`;
   var HYDRATOR_KEY = "__nostrComponentsMainWorldHydrator";
   var transport = globalThis.__nostrComponentsRelayTransport;
   var previousHydrator = globalThis[HYDRATOR_KEY];
-  if (transport?.__channel) {
+  if (/^[0-9a-f]{64}$/.test(String(transport?.hydrationChannel || ""))) {
     previousHydrator?.dispose?.();
     globalThis[HYDRATOR_KEY] = installComponentHydrator({
-      channel: transport.__channel
+      channel: transport.hydrationChannel
     });
   }
 })();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { finalizeEvent } from 'nostr-tools';
 import * as zapReceiptModule from '../zap-receipt';
 import {
   fetchInvoice,
@@ -11,6 +12,22 @@ import {
 } from '../zap-utils';
 
 const RELAYS = ['wss://relay.damus.io'];
+
+function makeProfileEvent(
+  secretByte: number,
+  content: Record<string, unknown>,
+  createdAt = 10,
+) {
+  return finalizeEvent(
+    {
+      kind: 0,
+      created_at: createdAt,
+      tags: [],
+      content: JSON.stringify(content),
+    },
+    new Uint8Array(32).fill(secretByte),
+  );
+}
 
 afterEach(() => {
   delete (
@@ -24,22 +41,16 @@ afterEach(() => {
 
 describe('Zap component relay transport', () => {
   it('routes profile lookup through the host transport', async () => {
-    const pubkey = '6'.repeat(64);
-    const profile = {
-      id: '1'.repeat(64),
-      pubkey,
-      created_at: 10,
-      kind: 0,
-      content: JSON.stringify({ lud16: 'creator@example.com' }),
-      tags: [],
-      sig: '2'.repeat(128),
-    };
+    const profile = makeProfileEvent(6, {
+      lud16: 'creator@example.com',
+    });
+    const pubkey = profile.pubkey;
     const query = vi.fn().mockResolvedValue([profile]);
     Object.assign(globalThis, {
       __nostrComponentsRelayTransport: { query, publish: vi.fn() },
     });
 
-    await expect(getProfileMetadata(pubkey, RELAYS)).resolves.toBe(profile);
+    await expect(getProfileMetadata(pubkey, RELAYS)).resolves.toMatchObject(profile);
     expect(query).toHaveBeenCalledWith(RELAYS, {
       authors: [pubkey],
       kinds: [0],
@@ -47,24 +58,34 @@ describe('Zap component relay transport', () => {
     });
   });
 
+  it('rejects forged and wrong-author profile responses', async () => {
+    const profile = makeProfileEvent(12, {
+      lud16: 'creator@example.com',
+    });
+    const forgedProfile = {
+      ...profile,
+      content: JSON.stringify({ lud16: 'attacker@example.com' }),
+    };
+    const wrongAuthor = makeProfileEvent(13, {
+      lud16: 'attacker@example.com',
+    });
+    const relays = ['wss://profile-validation.example'];
+    const query = vi
+      .fn()
+      .mockResolvedValue([forgedProfile, wrongAuthor]);
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: { query, publish: vi.fn() },
+    });
+
+    await expect(getProfileMetadata(profile.pubkey, relays)).resolves.toBeNull();
+  });
+
   it('scopes cached profiles by normalized relay set', async () => {
-    const pubkey = '9'.repeat(64);
     const relayA = ['wss://profiles-a.example'];
     const relayB = ['wss://profiles-b.example'];
-    const profileA = {
-      id: 'a'.repeat(64),
-      pubkey,
-      created_at: 10,
-      kind: 0,
-      content: JSON.stringify({ name: 'Relay A' }),
-      tags: [],
-      sig: '1'.repeat(128),
-    };
-    const profileB = {
-      ...profileA,
-      id: 'b'.repeat(64),
-      content: JSON.stringify({ name: 'Relay B' }),
-    };
+    const profileA = makeProfileEvent(9, { name: 'Relay A' }, 10);
+    const profileB = makeProfileEvent(9, { name: 'Relay B' }, 11);
+    const pubkey = profileA.pubkey;
     const query = vi.fn(async (relays: string[]) =>
       relays === relayA ? [profileA] : [profileB],
     );
@@ -72,11 +93,11 @@ describe('Zap component relay transport', () => {
       __nostrComponentsRelayTransport: { query, publish: vi.fn() },
     });
 
-    await expect(getProfileMetadata(pubkey, relayA)).resolves.toBe(profileA);
-    await expect(getProfileMetadata(pubkey, relayB)).resolves.toBe(profileB);
+    await expect(getProfileMetadata(pubkey, relayA)).resolves.toMatchObject(profileA);
+    await expect(getProfileMetadata(pubkey, relayB)).resolves.toMatchObject(profileB);
     await expect(
       getProfileMetadata(pubkey, ['wss://profiles-a.example/']),
-    ).resolves.toBe(profileA);
+    ).resolves.toMatchObject(profileA);
     expect(query).toHaveBeenCalledTimes(2);
   });
 
@@ -137,15 +158,9 @@ describe('Zap component relay transport', () => {
     });
 
     await expect(
-      getZapProviderInfo({
-        id: '11'.repeat(32),
-        pubkey: '22'.repeat(32),
-        kind: 0,
-        created_at: 1,
-        tags: [],
-        content: JSON.stringify({ lud16: 'alice@ln.example' }),
-        sig: '33'.repeat(64),
-      } as any),
+      getZapProviderInfo(
+        makeProfileEvent(22, { lud16: 'alice@ln.example' }),
+      ),
     ).resolves.toMatchObject({
       lnurl: 'https://ln.example/.well-known/lnurlp/alice',
       callback: 'https://ln.example/callback',

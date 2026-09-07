@@ -12,10 +12,11 @@
     }).join('');
   }
 
-  async function sendInjectionRequest(channel) {
+  async function sendInjectionRequest(relayChannel, hydrationChannel) {
     const message = {
       type: 'INJECT_NOSTR_COMPONENTS',
-      channel: channel
+      channel: relayChannel,
+      hydrationChannel: hydrationChannel
     };
 
     let response;
@@ -41,8 +42,9 @@
     }
   }
 
-  const channel = createChannel();
-  const hydrationEventName = HYDRATION_EVENT_PREFIX + channel;
+  const relayChannel = createChannel();
+  const hydrationChannel = createChannel();
+  const hydrationEventName = HYDRATION_EVENT_PREFIX + hydrationChannel;
 
   function hydrate(slot) {
     slot.dispatchEvent(new Event(hydrationEventName, { bubbles: true }));
@@ -52,10 +54,10 @@
     return true;
   }
 
-  extension.relayClient.configure(channel);
+  extension.relayClient.configure(relayChannel);
   extension.componentLoader = {
-    channel: channel,
-    ready: sendInjectionRequest(channel),
+    channel: relayChannel,
+    ready: sendInjectionRequest(relayChannel, hydrationChannel),
     hydrate: hydrate
   };
 })();

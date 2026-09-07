@@ -8,6 +8,7 @@
 // connected at check time, and every component errored out.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { finalizeEvent } from 'nostr-tools';
 
 // Emulates NDK 2.13 semantics faithfully for the parts NostrService touches:
 // - `set explicitRelayUrls(urls)` clears the pool and recreates all relays
@@ -130,19 +131,21 @@ describe('NostrService.connectToNostr concurrency', () => {
   it('loads profiles through the host transport without a direct NDK fetch', async () => {
     const { service } = await freshService();
     const fetchProfile = vi.fn();
-    const pubkey = '9'.repeat(64);
     const customRelays = ['wss://profiles.example'];
-    const query = vi.fn().mockResolvedValue([
+    const profile = finalizeEvent(
       {
-        pubkey,
         created_at: 10,
         kind: 0,
+        tags: [],
         content: JSON.stringify({
           display_name: 'YouTube creator',
           picture: 'https://example.com/creator.png',
         }),
       },
-    ]);
+      new Uint8Array(32).fill(9),
+    );
+    const pubkey = profile.pubkey;
+    const query = vi.fn().mockResolvedValue([profile]);
     Object.assign(globalThis, {
       __nostrComponentsRelayTransport: { query, publish: vi.fn() },
     });

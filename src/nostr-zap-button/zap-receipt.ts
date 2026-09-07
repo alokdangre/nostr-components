@@ -3,7 +3,8 @@
 import { bech32 } from '@scure/base';
 import { decode as decodeBolt11 } from 'light-bolt11-decoder';
 import type { Event } from 'nostr-tools';
-import { nip57, verifyEvent } from 'nostr-tools';
+import { nip57 } from 'nostr-tools';
+import { cloneVerifiedEvent } from '../common/nostr-event';
 import { httpGetJson } from '../common/relay-transport';
 
 export interface ZapProviderInfo {
@@ -61,7 +62,11 @@ export async function resolveZapProviderInfo(
   fetchImpl?: typeof fetch,
 ): Promise<ZapProviderInfo | null> {
   try {
-    const lnurl = lnurlFromProfileContent(profileMetadata.content || '');
+    const verifiedProfile = cloneVerifiedEvent(profileMetadata);
+    if (!verifiedProfile || verifiedProfile.kind !== 0) {
+      return null;
+    }
+    const lnurl = lnurlFromProfileContent(verifiedProfile.content || '');
     if (!lnurl) return null;
 
     let body: any;
@@ -148,20 +153,21 @@ export function validateZapReceipt(
 
   // Verify the receipt's own signature here rather than relying on the pool/NDK
   // caller's verification config — this function is the fail-closed gate.
-  if (!verifyEvent(receipt)) {
+  const verifiedReceipt = cloneVerifiedEvent(receipt);
+  if (!verifiedReceipt) {
     return { ok: false, reason: 'receipt-sig' };
   }
 
-  if (receipt.pubkey.toLowerCase() !== opts.provider.nostrPubkey.toLowerCase()) {
+  if (verifiedReceipt.pubkey.toLowerCase() !== opts.provider.nostrPubkey.toLowerCase()) {
     return { ok: false, reason: 'receipt-pubkey-mismatch' };
   }
 
-  const receiptP = getTagValue(receipt.tags, 'p');
+  const receiptP = getTagValue(verifiedReceipt.tags, 'p');
   if (!receiptP || receiptP.toLowerCase() !== opts.recipientPubkey.toLowerCase()) {
     return { ok: false, reason: 'receipt-p-mismatch' };
   }
 
-  const description = getTagValue(receipt.tags, 'description');
+  const description = getTagValue(verifiedReceipt.tags, 'description');
   if (!description) {
     return { ok: false, reason: 'missing-description' };
   }
@@ -171,19 +177,20 @@ export function validateZapReceipt(
     return { ok: false, reason: `invalid-zap-request:${zapRequestError}` };
   }
 
-  let zapRequest: Event;
+  let parsedZapRequest: Event;
   try {
-    zapRequest = JSON.parse(description);
+    parsedZapRequest = JSON.parse(description);
   } catch {
     return { ok: false, reason: 'description-json' };
   }
 
   // nip57.validateZapRequest does not check the kind; NIP-57 zap requests are 9734.
-  if (zapRequest.kind !== 9734) {
+  if (parsedZapRequest.kind !== 9734) {
     return { ok: false, reason: 'zap-request-kind' };
   }
 
-  if (!verifyEvent(zapRequest)) {
+  const zapRequest = cloneVerifiedEvent(parsedZapRequest);
+  if (!zapRequest) {
     return { ok: false, reason: 'zap-request-sig' };
   }
 
@@ -192,7 +199,7 @@ export function validateZapReceipt(
     return { ok: false, reason: 'zap-request-p-mismatch' };
   }
 
-  const bolt11 = getTagValue(receipt.tags, 'bolt11');
+  const bolt11 = getTagValue(verifiedReceipt.tags, 'bolt11');
   if (!bolt11) {
     return { ok: false, reason: 'missing-bolt11' };
   }

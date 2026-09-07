@@ -8,9 +8,9 @@ const HYDRATOR_KEY = '__nostrComponentsMainWorldHydrator';
 const transport = (globalThis as any).__nostrComponentsRelayTransport;
 const previousHydrator = (globalThis as any)[HYDRATOR_KEY];
 
-if (transport?.__channel) {
+if (/^[0-9a-f]{64}$/.test(String(transport?.hydrationChannel || ''))) {
   previousHydrator?.dispose?.();
   (globalThis as any)[HYDRATOR_KEY] = installComponentHydrator({
-    channel: transport.__channel,
+    channel: transport.hydrationChannel,
   });
 }

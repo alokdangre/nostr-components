@@ -6725,6 +6725,8 @@
     const RESPONSE_SOURCE = "nostr-components-relay-extension";
     const CHANNEL_PATTERN = /^[0-9a-f]{64}$/;
     const REQUEST_ID_PATTERN = /^[0-9a-f]{32}$/;
+    const MESSAGE_MAC_PATTERN = /^[0-9a-f]{64}$/;
+    const BRIDGE_AUTH_CONTEXT = "nostr-components-relay-v1";
     const HEX_64_PATTERN = /^[0-9a-f]{64}$/i;
     const HEX_128_PATTERN = /^[0-9a-f]{128}$/i;
     const QUERY_DEADLINE_MS = 2500;
@@ -6757,6 +6759,94 @@
     let activeSession = null;
     const relayHealth = /* @__PURE__ */ new Map();
     const recentReactionsByUrl = /* @__PURE__ */ new Map();
+    function bridgeAuthPayload(type, message) {
+      if (type === "request") {
+        return JSON.stringify([
+          BRIDGE_AUTH_CONTEXT,
+          "request",
+          message.requestId,
+          message.operation,
+          message.payload
+        ]);
+      }
+      return JSON.stringify([
+        BRIDGE_AUTH_CONTEXT,
+        "response",
+        message.requestId,
+        message.requestMac,
+        message.ok === true,
+        message.ok === true ? message.result : null,
+        message.ok === true ? null : String(message.error || "Relay request failed")
+      ]);
+    }
+    function hexToBytes3(value) {
+      const bytes4 = new Uint8Array(value.length / 2);
+      for (let index = 0; index < bytes4.length; index += 1) {
+        bytes4[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+      }
+      return bytes4;
+    }
+    function bytesToHex3(value) {
+      return Array.from(new Uint8Array(value), function(byte) {
+        return byte.toString(16).padStart(2, "0");
+      }).join("");
+    }
+    function cloneBridgeValue(value) {
+      if (typeof globalThis.structuredClone === "function") {
+        return globalThis.structuredClone(value);
+      }
+      return JSON.parse(JSON.stringify(value));
+    }
+    function createBridgeAuthenticator(channel) {
+      if (!CHANNEL_PATTERN.test(String(channel || ""))) {
+        throw new Error("Invalid relay bridge channel");
+      }
+      if (!globalThis.crypto?.subtle) {
+        throw new Error("Web Crypto is required for the relay bridge");
+      }
+      const subtle = globalThis.crypto.subtle;
+      const encoder = new TextEncoder();
+      const keyPromise = subtle.importKey(
+        "raw",
+        hexToBytes3(channel),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign", "verify"]
+      );
+      async function sign(type, message) {
+        const key = await keyPromise;
+        const mac = await subtle.sign(
+          "HMAC",
+          key,
+          encoder.encode(bridgeAuthPayload(type, message))
+        );
+        return bytesToHex3(mac);
+      }
+      async function verify(type, message) {
+        if (!MESSAGE_MAC_PATTERN.test(String(message?.mac || ""))) return false;
+        const key = await keyPromise;
+        return subtle.verify(
+          "HMAC",
+          key,
+          hexToBytes3(message.mac),
+          encoder.encode(bridgeAuthPayload(type, message))
+        );
+      }
+      return Object.freeze({
+        signRequest: function(message) {
+          return sign("request", message);
+        },
+        verifyRequest: function(message) {
+          return verify("request", message);
+        },
+        signResponse: function(message) {
+          return sign("response", message);
+        },
+        verifyResponse: function(message) {
+          return verify("response", message);
+        }
+      });
+    }
     async function rememberRecentReaction(event) {
       const identifierTag = event.tags.find((tag) => Array.isArray(tag) && tag[0] === "i");
       const url = identifierTag?.[1];
@@ -7123,7 +7213,12 @@
         if (!filter) {
           throw new Error("Relay request contains an unsupported filter");
         }
-        return queryWithFastQuorum(pool, relays, filter);
+        const events = await queryWithFastQuorum(pool, relays, filter);
+        if (filter.kinds[0] !== 0) return events;
+        const authors = new Set(filter.authors);
+        return events.filter(function(event) {
+          return event?.kind === 0 && authors.has(String(event.pubkey || "").toLowerCase()) && verifyEvent(event);
+        });
       }
       if (message.operation === "publish") {
         const event = validateReactionEvent(payload.event);
@@ -7157,34 +7252,58 @@
       }
       const pool = options && options.pool || new SimplePool();
       const pageWindow = options && options.window || window;
+      const authenticator = createBridgeAuthenticator(channel);
+      const handledRequestIds = /* @__PURE__ */ new Set();
+      function rememberRequestId(requestId) {
+        handledRequestIds.add(requestId);
+        if (handledRequestIds.size > 1024) {
+          handledRequestIds.delete(handledRequestIds.values().next().value);
+        }
+      }
       async function onMessage(event) {
-        const message = event.data;
-        if (event.source !== pageWindow || event.origin !== pageWindow.location.origin || !isAllowedPageOrigin(event.origin) || !message || message.source !== REQUEST_SOURCE || message.channel !== channel || !REQUEST_ID_PATTERN.test(String(message.requestId || ""))) {
+        const candidate = event.data;
+        if (event.source !== pageWindow || event.origin !== pageWindow.location.origin || !isAllowedPageOrigin(event.origin) || !candidate || candidate.source !== REQUEST_SOURCE || !REQUEST_ID_PATTERN.test(String(candidate.requestId || "")) || !MESSAGE_MAC_PATTERN.test(String(candidate.mac || "")) || handledRequestIds.has(candidate.requestId)) {
           return;
         }
+        let message;
         try {
-          const result = await handleRequest(pool, message);
-          pageWindow.postMessage(
-            {
-              source: RESPONSE_SOURCE,
-              channel,
-              requestId: message.requestId,
-              ok: true,
-              result
-            },
-            event.origin
-          );
+          message = cloneBridgeValue(candidate);
+        } catch (_error) {
+          return;
+        }
+        if (!message || message.source !== REQUEST_SOURCE || !REQUEST_ID_PATTERN.test(String(message.requestId || "")) || !MESSAGE_MAC_PATTERN.test(String(message.mac || "")) || handledRequestIds.has(message.requestId)) {
+          return;
+        }
+        let authenticated = false;
+        try {
+          authenticated = await authenticator.verifyRequest(message);
+        } catch (_error) {
+          return;
+        }
+        if (!authenticated || handledRequestIds.has(message.requestId)) return;
+        rememberRequestId(message.requestId);
+        let response;
+        try {
+          response = {
+            source: RESPONSE_SOURCE,
+            requestId: message.requestId,
+            requestMac: message.mac,
+            ok: true,
+            result: await handleRequest(pool, message)
+          };
         } catch (error) {
-          pageWindow.postMessage(
-            {
-              source: RESPONSE_SOURCE,
-              channel,
-              requestId: message.requestId,
-              ok: false,
-              error: error instanceof Error ? error.message : "Relay request failed"
-            },
-            event.origin
-          );
+          response = {
+            source: RESPONSE_SOURCE,
+            requestId: message.requestId,
+            requestMac: message.mac,
+            ok: false,
+            error: error instanceof Error ? error.message : "Relay request failed"
+          };
+        }
+        try {
+          response.mac = await authenticator.signResponse(response);
+          pageWindow.postMessage(response, event.origin);
+        } catch (_error) {
         }
       }
       pageWindow.addEventListener("message", onMessage);
@@ -7203,6 +7322,7 @@
     extension.relayClient = {
       configure,
       queryWithFastQuorum,
+      createBridgeAuthenticator,
       isAllowedContentUrl,
       isAllowedStatusUrl,
       validateFilter,
