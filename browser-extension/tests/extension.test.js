@@ -686,6 +686,47 @@ describe('Zap action integration', function () {
     ).toBe(recipientNpub);
   });
 
+  it('ignores related-video links when identifying the active Short', function () {
+    globalThis.window = {
+      location: {
+        pathname: '/shorts/dQw4w9WgXcQ',
+        origin: 'https://www.youtube.com'
+      }
+    };
+    const actionBar = { id: 'active-shorts-actions' };
+    const activeContainer = {
+      getAttribute() {
+        return null;
+      },
+      querySelector(selector) {
+        return selector.includes('#actions') ? actionBar : null;
+      },
+      querySelectorAll(selector) {
+        return selector.startsWith('a[href')
+          ? [{
+              getAttribute: () =>
+                '/watch?v=aqz-KE-bpKQ'
+            }]
+          : [];
+      }
+    };
+    const root = {
+      querySelector() {
+        return activeContainer;
+      }
+    };
+
+    expect(
+      extension.youtubeDom.findVideoContext(root, {
+        videoId: 'dQw4w9WgXcQ',
+        canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+      })
+    ).toEqual({
+      container: activeContainer,
+      actionBar: actionBar
+    });
+  });
+
   it('does not reuse a stale active Shorts container after the URL changes', function () {
     const previousRecipient = nip19.npubEncode('2'.repeat(64));
     const makeShortsContainer = function (recipient) {

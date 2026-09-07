@@ -31,7 +31,6 @@
       'a[href^="/shorts/"]',
       'a[href^="https://www.youtube.com/shorts/"]'
     ].join(',')) || [];
-    let firstVideoId = null;
     for (const link of links) {
       const parsed = extension.url.parseYouTubeUrl(
         link.getAttribute?.('href') || '',
@@ -39,9 +38,8 @@
       );
       if (!parsed) continue;
       if (parsed.videoId === expectedVideoId) return parsed.videoId;
-      if (!firstVideoId) firstVideoId = parsed.videoId;
     }
-    return firstVideoId;
+    return null;
   }
 
   function findVideoContainer(root, videoInfo) {
