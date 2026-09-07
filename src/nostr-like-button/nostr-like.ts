@@ -495,7 +495,7 @@ export default class NostrLike extends NostrBaseComponent {
       void this.handleLikeClick();
     });
 
-    this.delegateEvent('click', '.like-count', (e) => {
+    this.delegateEvent('click', '.like-count.clickable', (e) => {
       e.preventDefault?.();
       e.stopPropagation?.();
       void this.handleCountClick();
