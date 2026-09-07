@@ -567,6 +567,12 @@ import { normalizeURL } from 'nostr-tools/utils';
     }
   }
 
+  function revokeActionContext(actionId) {
+    if (ACTION_ID_PATTERN.test(String(actionId || ''))) {
+      actionContexts.delete(actionId);
+    }
+  }
+
   function isAllowedPageOrigin(origin) {
     try {
       const url = new URL(origin);
@@ -857,6 +863,7 @@ import { normalizeURL } from 'nostr-tools/utils';
     validateFilter: validateFilter,
     validateReactionEvent: validateReactionEvent,
     registerActionContext: registerActionContext,
+    revokeActionContext: revokeActionContext,
     validateRelays: validateRelays,
     isAllowedZapHttpUrl: function (value) {
       return Boolean(extension.zapHttp && extension.zapHttp.isAllowedZapHttpUrl(value));

@@ -340,6 +340,7 @@ describe('Zap action integration', function () {
       }
 
       appendChild(child) {
+        child.parentElement = this;
         this.children.push(child);
         return child;
       }
@@ -409,6 +410,13 @@ describe('Zap action integration', function () {
     expect(slot.querySelector('nostr-zap-button').getAttribute('npub')).toBe(
       recipientNpub
     );
+    const trustedZap = slot.querySelector('nostr-zap-button');
+    slot.dispatchEvent(
+      new Event('nostr-components-revoke:' + channel)
+    );
+    expect(slot.querySelector('nostr-like-button')).toBeNull();
+    expect(slot.querySelector('nostr-zap-button')).toBeNull();
+    expect(getTrustedActionContext(trustedZap)).toBeNull();
   });
 
   it('adds X Zap only for a verified zappable directory identity', function () {
@@ -1310,6 +1318,10 @@ describe('CSP-safe component and relay integration', function () {
     const configure = vi
       .spyOn(extension.relayClient, 'configure')
       .mockReturnValue({ dispose: vi.fn() });
+    const revokeActionContext = vi.spyOn(
+      extension.relayClient,
+      'revokeActionContext'
+    );
 
     await import('../lib/component-loader.js?private-bootstrap');
     const loader = extension.componentLoader;
@@ -1359,6 +1371,13 @@ describe('CSP-safe component and relay integration', function () {
       recipientNpub: nip19.npubEncode('1'.repeat(64))
     });
     expect(dispatchedEvent.detail.actionId).toMatch(/^[0-9a-f]{64}$/);
+    const actionId = dispatchedEvent.detail.actionId;
+    expect(loader.revokeAction(slot)).toBe(true);
+    expect(revokeActionContext).toHaveBeenCalledWith(actionId);
+    expect(dispatchedEvent.type).toBe(
+      'nostr-components-revoke:' + hydrationChannel
+    );
+    expect(loader.revokeAction(slot)).toBe(false);
 
     extension.componentLoader = previousLoader;
   });
@@ -1593,6 +1612,17 @@ describe('CSP-safe component and relay integration', function () {
         { relays: relays, url: filter['#i'][0] }
       )
     });
+    extension.relayClient.revokeActionContext(actionId);
+    await onMessage({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '3'.repeat(32),
+        'publish',
+        { relays: relays, event: signedEvent, actionId: actionId }
+      )
+    });
 
     const normalizedRelays = ['wss://relay.damus.io/'];
     expect(pool.subscribeMany).toHaveBeenCalledWith(
@@ -1621,7 +1651,8 @@ describe('CSP-safe component and relay integration', function () {
       true,
       false,
       true,
-      true
+      true,
+      false
     ]);
     expect(responses[0].message.result).toEqual({
       totalCount: 1,

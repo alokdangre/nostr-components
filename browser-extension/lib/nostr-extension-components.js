@@ -28268,6 +28268,11 @@ ${url}`;
   var nativeAppendChild = elementPrototype?.appendChild;
   var nativeRemove = elementPrototype?.remove;
   var nativeSetAttribute = elementPrototype?.setAttribute;
+  var eventTargetPrototype = globalThis.EventTarget?.prototype;
+  var nativeAddEventListener = eventTargetPrototype?.addEventListener;
+  var watchedSlots = /* @__PURE__ */ new WeakSet();
+  var isWatchedSlot = watchedSlots.has.bind(watchedSlots);
+  var rememberWatchedSlot = watchedSlots.add.bind(watchedSlots);
   var targetGetter = Object.getOwnPropertyDescriptor(
     globalThis.Event?.prototype || {},
     "target"
@@ -28293,6 +28298,37 @@ ${url}`;
   function setAttribute(element, name, value) {
     if (nativeSetAttribute) nativeSetAttribute.call(element, name, value);
     else element.setAttribute(name, value);
+  }
+  function discardOwnedChildren(slot) {
+    for (const selector of ["nostr-like-button", "nostr-zap-button"]) {
+      let component = querySelector(slot, selector);
+      let guard = 0;
+      while (component && guard < 16) {
+        if (ownsComponent(component)) discardComponent(component);
+        else if (nativeRemove) nativeRemove.call(component);
+        else component.remove?.();
+        component = querySelector(slot, selector);
+        guard += 1;
+      }
+    }
+  }
+  function watchSlotForRevocation(slot, eventName) {
+    if (isWatchedSlot(slot)) return;
+    rememberWatchedSlot(slot);
+    const revoke = function(event) {
+      let target;
+      try {
+        target = readEventTarget(event);
+      } catch (_error) {
+        return;
+      }
+      if (target === slot) discardOwnedChildren(slot);
+    };
+    if (nativeAddEventListener) {
+      nativeAddEventListener.call(slot, eventName, revoke);
+    } else {
+      slot.addEventListener(eventName, revoke);
+    }
   }
   function normalizeContext(value) {
     if (!value || value.kind !== "x" && value.kind !== "youtube" || !ACTION_ID_PATTERN.test(String(value.actionId || "")) || typeof value.url !== "string" || !value.url.startsWith("https://")) {
@@ -28378,6 +28414,7 @@ ${url}`;
       throw new Error("Invalid component hydration channel");
     }
     const eventName = COMPONENT_HYDRATION_EVENT_PREFIX + channel;
+    const revocationEventName = "nostr-components-revoke:" + channel;
     const getRegistered = registry?.get?.bind(registry);
     const capturedRegistry = { get: getRegistered };
     const handler = function(event) {
@@ -28389,6 +28426,7 @@ ${url}`;
       } catch (_error) {
         return;
       }
+      watchSlotForRevocation(target, revocationEventName);
       hydrateActionSlot(target, detail, capturedRegistry);
     };
     root.addEventListener(eventName, handler, true);

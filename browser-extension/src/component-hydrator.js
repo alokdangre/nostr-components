@@ -18,6 +18,11 @@ const nativeQuerySelector = elementPrototype?.querySelector;
 const nativeAppendChild = elementPrototype?.appendChild;
 const nativeRemove = elementPrototype?.remove;
 const nativeSetAttribute = elementPrototype?.setAttribute;
+const eventTargetPrototype = globalThis.EventTarget?.prototype;
+const nativeAddEventListener = eventTargetPrototype?.addEventListener;
+const watchedSlots = new WeakSet();
+const isWatchedSlot = watchedSlots.has.bind(watchedSlots);
+const rememberWatchedSlot = watchedSlots.add.bind(watchedSlots);
 const targetGetter = Object.getOwnPropertyDescriptor(
   globalThis.Event?.prototype || {},
   'target',
@@ -55,6 +60,39 @@ function discardComponent(component) {
 function setAttribute(element, name, value) {
   if (nativeSetAttribute) nativeSetAttribute.call(element, name, value);
   else element.setAttribute(name, value);
+}
+
+function discardOwnedChildren(slot) {
+  for (const selector of ['nostr-like-button', 'nostr-zap-button']) {
+    let component = querySelector(slot, selector);
+    let guard = 0;
+    while (component && guard < 16) {
+      if (ownsComponent(component)) discardComponent(component);
+      else if (nativeRemove) nativeRemove.call(component);
+      else component.remove?.();
+      component = querySelector(slot, selector);
+      guard += 1;
+    }
+  }
+}
+
+function watchSlotForRevocation(slot, eventName) {
+  if (isWatchedSlot(slot)) return;
+  rememberWatchedSlot(slot);
+  const revoke = function (event) {
+    let target;
+    try {
+      target = readEventTarget(event);
+    } catch (_error) {
+      return;
+    }
+    if (target === slot) discardOwnedChildren(slot);
+  };
+  if (nativeAddEventListener) {
+    nativeAddEventListener.call(slot, eventName, revoke);
+  } else {
+    slot.addEventListener(eventName, revoke);
+  }
 }
 
 function normalizeContext(value) {
@@ -173,6 +211,7 @@ export function installComponentHydrator({
   }
 
   const eventName = COMPONENT_HYDRATION_EVENT_PREFIX + channel;
+  const revocationEventName = 'nostr-components-revoke:' + channel;
   const getRegistered = registry?.get?.bind(registry);
   const capturedRegistry = { get: getRegistered };
   const handler = function (event) {
@@ -184,6 +223,7 @@ export function installComponentHydrator({
     } catch (_error) {
       return;
     }
+    watchSlotForRevocation(target, revocationEventName);
     hydrateActionSlot(target, detail, capturedRegistry);
   };
   root.addEventListener(eventName, handler, true);

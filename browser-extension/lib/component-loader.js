@@ -7,6 +7,7 @@
   const CHANNEL_PATTERN = /^[0-9a-f]{64}$/;
   const actionContexts = new WeakMap();
   let hydrationEventName = null;
+  let revocationEventName = null;
   let resolveReady;
   let rejectReady;
   const ready = new Promise(function (resolve, reject) {
@@ -29,6 +30,7 @@
     try {
       extension.relayClient.configure(relayChannel);
       hydrationEventName = HYDRATION_EVENT_PREFIX + hydrationChannel;
+      revocationEventName = 'nostr-components-revoke:' + hydrationChannel;
       resolveReady(true);
     } catch (error) {
       rejectReady(error);
@@ -73,13 +75,23 @@
 
   function updateAction(slot, patch) {
     const current = actionContexts.get(slot);
-    if (!current) {
-      throw new Error('Unknown isolated action slot');
-    }
+    if (!current) return false;
     registerAction(slot, {
       ...current,
       ...patch
     });
+    return true;
+  }
+
+  function revokeAction(slot) {
+    const context = actionContexts.get(slot);
+    if (!context) return false;
+    actionContexts.delete(slot);
+    extension.relayClient.revokeActionContext(context.actionId);
+    if (revocationEventName) {
+      slot.dispatchEvent(new Event(revocationEventName));
+    }
+    return true;
   }
 
   function hydrate(slot) {
@@ -104,6 +116,7 @@
     ready: ready,
     registerAction: registerAction,
     updateAction: updateAction,
+    revokeAction: revokeAction,
     hydrate: hydrate
   };
 })();

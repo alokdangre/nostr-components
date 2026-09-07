@@ -7155,6 +7155,11 @@
         actionContexts.delete(actionContexts.keys().next().value);
       }
     }
+    function revokeActionContext(actionId) {
+      if (ACTION_ID_PATTERN.test(String(actionId || ""))) {
+        actionContexts.delete(actionId);
+      }
+    }
     function isAllowedPageOrigin(origin) {
       try {
         const url = new URL(origin);
@@ -7384,6 +7389,7 @@
       validateFilter,
       validateReactionEvent,
       registerActionContext,
+      revokeActionContext,
       validateRelays,
       isAllowedZapHttpUrl: function(value) {
         return Boolean(extension.zapHttp && extension.zapHttp.isAllowedZapHttpUrl(value));

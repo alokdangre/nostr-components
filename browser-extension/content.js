@@ -174,7 +174,30 @@
     }, INJECT_DELAY_MS);
   }
 
-  const timelineObserver = new MutationObserver(scheduleInjection);
+  function revokeRemovedActions(records) {
+    const selector =
+      '[data-nostr-competency-like="true"], [data-nostr-youtube-action="true"]';
+    const removedActions = new Set();
+    for (const record of records || []) {
+      for (const node of record.removedNodes || []) {
+        if (!node || typeof node !== 'object') continue;
+        if (node.matches?.(selector)) removedActions.add(node);
+        for (const action of node.querySelectorAll?.(selector) || []) {
+          removedActions.add(action);
+        }
+      }
+    }
+    for (const action of removedActions) {
+      if (action.isConnected) continue;
+      hydrationObserver?.unobserve(action);
+      extension.componentLoader?.revokeAction?.(action);
+    }
+  }
+
+  const timelineObserver = new MutationObserver(function (records) {
+    revokeRemovedActions(records);
+    scheduleInjection();
+  });
   const themeObserver = new MutationObserver(scheduleInjection);
 
   function start() {

@@ -305,6 +305,7 @@
         action.dataset.videoId !== videoId ||
         (activeActionBar && !isDescendantOf(action, activeActionBar))
       ) {
+        extension.componentLoader?.revokeAction?.(action);
         action.remove();
       }
     }
