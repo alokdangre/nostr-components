@@ -3,6 +3,8 @@
 (function () {
   const extension = globalThis.NostrLikeExtension = globalThis.NostrLikeExtension || {};
   const NPUB_PATTERN = /npub1[023456789acdefghjklmnpqrstuvwxyz]{58}/gi;
+  let lastShortsContainer = null;
+  let lastShortsVideoId = null;
 
   function getVideoInfo() {
     return extension.url.parseYouTubeUrl(
@@ -18,12 +20,86 @@
     }
   }
 
+  function getContainerVideoId(container, expectedVideoId) {
+    for (const attribute of ['video-id', 'data-video-id']) {
+      const value = container.getAttribute?.(attribute);
+      if (/^[A-Za-z0-9_-]{11}$/.test(String(value || ''))) return value;
+    }
+
+    const links = container.querySelectorAll?.([
+      'a[href*="/watch?v="]',
+      'a[href^="/shorts/"]',
+      'a[href^="https://www.youtube.com/shorts/"]'
+    ].join(',')) || [];
+    let firstVideoId = null;
+    for (const link of links) {
+      const parsed = extension.url.parseYouTubeUrl(
+        link.getAttribute?.('href') || '',
+        window.location.origin
+      );
+      if (!parsed) continue;
+      if (parsed.videoId === expectedVideoId) return parsed.videoId;
+      if (!firstVideoId) firstVideoId = parsed.videoId;
+    }
+    return firstVideoId;
+  }
+
+  function findVideoContainer(root, videoInfo) {
+    if (!root?.querySelector || !videoInfo?.videoId) return null;
+    const videoId = videoInfo.videoId;
+    const selectors = isShortsPage()
+      ? [
+          `ytd-reel-video-renderer[is-active][video-id="${videoId}"]`,
+          `ytd-reel-video-renderer[is-active][data-video-id="${videoId}"]`,
+          'ytd-reel-video-renderer[is-active]',
+          `ytm-reel-video-renderer[is-active][video-id="${videoId}"]`,
+          `ytm-reel-video-renderer[is-active][data-video-id="${videoId}"]`,
+          'ytm-reel-video-renderer[is-active]'
+        ]
+      : [
+          `ytd-watch-flexy[video-id="${videoId}"]`,
+          `ytd-watch-flexy[data-video-id="${videoId}"]`,
+          `ytm-watch[video-id="${videoId}"]`,
+          `ytm-watch[data-video-id="${videoId}"]`,
+          'ytd-watch-flexy[video-id]',
+          'ytm-watch[video-id]'
+        ];
+
+    const checked = new Set();
+    for (const selector of selectors) {
+      const container = root.querySelector(selector);
+      if (!container || checked.has(container)) continue;
+      checked.add(container);
+      const containerVideoId = getContainerVideoId(container, videoId);
+      if (containerVideoId === videoId) {
+        if (isShortsPage()) {
+          lastShortsContainer = container;
+          lastShortsVideoId = videoId;
+        }
+        return container;
+      }
+      if (isShortsPage() && !containerVideoId) {
+        if (
+          lastShortsContainer === container &&
+          lastShortsVideoId !== videoId
+        ) {
+          continue;
+        }
+        lastShortsContainer = container;
+        lastShortsVideoId = videoId;
+        return container;
+      }
+    }
+    return null;
+  }
+
   function findActionBar(root) {
     const selectors = isShortsPage()
       ? [
           'ytd-reel-video-renderer[is-active] ytd-reel-player-overlay-renderer #actions',
           'ytd-reel-video-renderer[is-active] #actions',
           'ytd-reel-player-overlay-renderer #actions',
+          '#actions',
           'ytm-reel-player-overlay-renderer #actions',
           'ytm-reel-player-overlay-renderer .reel-player-overlay-actions',
           'ytm-shorts-player-overlay-renderer #actions',
@@ -39,6 +115,13 @@
       if (actionBar) return actionBar;
     }
     return null;
+  }
+
+  function findVideoContext(root, videoInfo) {
+    const container = findVideoContainer(root, videoInfo);
+    if (!container) return null;
+    const actionBar = findActionBar(container);
+    return actionBar ? { container: container, actionBar: actionBar } : null;
   }
 
   function findAction(actionBar, videoId) {
@@ -193,15 +276,31 @@
     actionBar.appendChild(slot);
   }
 
-  function removeStaleActions(actionBar, videoId) {
-    const actions = actionBar.querySelectorAll?.('[data-nostr-youtube-action="true"]') || [];
+  function isDescendantOf(element, container) {
+    let current = element;
+    while (current) {
+      if (current === container) return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
+  function removeStaleActions(root, videoId, activeActionBar) {
+    const actions = root.querySelectorAll?.('[data-nostr-youtube-action="true"]') || [];
     for (const action of actions) {
-      if (action.dataset.videoId !== videoId) action.remove();
+      if (
+        action.dataset.videoId !== videoId ||
+        (activeActionBar && !isDescendantOf(action, activeActionBar))
+      ) {
+        action.remove();
+      }
     }
   }
 
   extension.youtubeDom = {
     getVideoInfo,
+    findVideoContainer,
+    findVideoContext,
     findActionBar,
     findAction,
     extractDeclaredNpub,

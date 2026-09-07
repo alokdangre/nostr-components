@@ -391,6 +391,149 @@ describe('Zap action integration', function () {
     expect(extension.youtubeDom.resolveRecipientNpub(root)).toBeNull();
   });
 
+  it('waits for the current watch container during an SPA transition', function () {
+    globalThis.window = {
+      location: {
+        pathname: '/watch',
+        origin: 'https://www.youtube.com'
+      }
+    };
+    const previousContainer = {
+      getAttribute(name) {
+        return name === 'video-id' ? 'aqz-KE-bpKQ' : null;
+      },
+      querySelector() {
+        return { id: 'previous-actions' };
+      },
+      querySelectorAll() {
+        return [];
+      }
+    };
+    const root = {
+      querySelector() {
+        return previousContainer;
+      }
+    };
+
+    expect(
+      extension.youtubeDom.findVideoContext(root, {
+        videoId: 'dQw4w9WgXcQ',
+        canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+      })
+    ).toBeNull();
+  });
+
+  it('resolves controls and recipient from the same video container', function () {
+    globalThis.window = {
+      location: {
+        pathname: '/watch',
+        origin: 'https://www.youtube.com'
+      }
+    };
+    const previousRecipient = nip19.npubEncode('2'.repeat(64));
+    const actionBar = { id: 'current-actions' };
+    const currentContainer = {
+      getAttribute(name) {
+        return name === 'video-id' ? 'dQw4w9WgXcQ' : null;
+      },
+      querySelector(selector) {
+        return selector.includes('top-level-buttons-computed')
+          ? actionBar
+          : null;
+      },
+      querySelectorAll(selector) {
+        if (!selector.includes('channel')) return [];
+        return [{
+          getAttribute: () => null,
+          textContent: 'Nostr: ' + recipientNpub
+        }];
+      }
+    };
+    const root = {
+      querySelector() {
+        return currentContainer;
+      },
+      querySelectorAll() {
+        return [{
+          getAttribute: () => null,
+          textContent: 'Nostr: ' + previousRecipient
+        }];
+      }
+    };
+
+    const context = extension.youtubeDom.findVideoContext(root, {
+      videoId: 'dQw4w9WgXcQ',
+      canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    });
+    expect(context).not.toBeNull();
+    expect(context.actionBar).toBe(actionBar);
+    expect(
+      extension.youtubeDom.resolveRecipientNpub(context.container)
+    ).toBe(recipientNpub);
+  });
+
+  it('does not reuse a stale active Shorts container after the URL changes', function () {
+    const previousRecipient = nip19.npubEncode('2'.repeat(64));
+    const makeShortsContainer = function (recipient) {
+      const actionBar = { id: 'shorts-actions-' + recipient.slice(-6) };
+      return {
+        actionBar: actionBar,
+        getAttribute() {
+          return null;
+        },
+        querySelector(selector) {
+          return selector.includes('#actions') ? actionBar : null;
+        },
+        querySelectorAll(selector) {
+          if (selector.startsWith('a[href')) return [];
+          return [{
+            getAttribute: () => null,
+            textContent: 'Nostr: ' + recipient
+          }];
+        }
+      };
+    };
+    const previousContainer = makeShortsContainer(previousRecipient);
+    const currentContainer = makeShortsContainer(recipientNpub);
+    let activeContainer = previousContainer;
+    const root = {
+      querySelector() {
+        return activeContainer;
+      }
+    };
+    globalThis.window = {
+      location: {
+        pathname: '/shorts/aqz-KE-bpKQ',
+        origin: 'https://www.youtube.com'
+      }
+    };
+
+    expect(
+      extension.youtubeDom.findVideoContext(root, {
+        videoId: 'aqz-KE-bpKQ',
+        canonicalUrl: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'
+      })
+    ).not.toBeNull();
+
+    globalThis.window.location.pathname = '/shorts/dQw4w9WgXcQ';
+    expect(
+      extension.youtubeDom.findVideoContext(root, {
+        videoId: 'dQw4w9WgXcQ',
+        canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+      })
+    ).toBeNull();
+
+    activeContainer = currentContainer;
+    const context = extension.youtubeDom.findVideoContext(root, {
+      videoId: 'dQw4w9WgXcQ',
+      canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    });
+    expect(context.actionBar).toBe(currentContainer.actionBar);
+    expect(
+      extension.youtubeDom.resolveRecipientNpub(context.container)
+    ).toBe(recipientNpub);
+  });
+
   it('places Shorts actions on the active reel overlay instead of a watch-page action bar', function () {
     globalThis.window = {
       location: {
@@ -1942,6 +2085,23 @@ describe('YouTube component integration', function () {
     likeContainer.nextSibling = followingAction;
     likeContainer.appendChild(nativeLike);
 
+    const watchContainer = {
+      getAttribute(name) {
+        return name === 'video-id' ? 'dQw4w9WgXcQ' : null;
+      },
+      querySelector(selector) {
+        return selector.includes('top-level-buttons-computed')
+          ? actionBar
+          : null;
+      },
+      querySelectorAll(selector) {
+        if (!selector.includes('channel')) return [];
+        return [{
+          getAttribute: (name) => name === 'href' ? 'nostr:' + recipientNpub : null,
+          textContent: 'Nostr: ' + recipientNpub
+        }];
+      }
+    };
     globalThis.document = {
       body: {},
       documentElement: {
@@ -1958,13 +2118,15 @@ describe('YouTube component integration', function () {
         return new FakeElement(tagName);
       },
       querySelector(selector) {
-        return selector === '#actions-inner #top-level-buttons-computed' ? actionBar : null;
+        return selector.startsWith('ytd-watch-flexy')
+          ? watchContainer
+          : null;
       },
       querySelectorAll(selector) {
         if (selector.includes('ytd-video-owner-renderer')) {
           return [{
-            getAttribute: (name) => name === 'href' ? 'nostr:' + recipientNpub : null,
-            textContent: 'Nostr: ' + recipientNpub
+            getAttribute: () => null,
+            textContent: 'Nostr: ' + nip19.npubEncode('5'.repeat(64))
           }];
         }
         return [];

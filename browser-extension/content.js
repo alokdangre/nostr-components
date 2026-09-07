@@ -127,12 +127,19 @@
   function processYouTubeVideo() {
     const videoInfo = extension.youtubeDom.getVideoInfo();
     if (!videoInfo) return;
-    const actionBar = extension.youtubeDom.findActionBar(document);
-    if (!actionBar) return;
+    const context = extension.youtubeDom.findVideoContext(document, videoInfo);
+    if (!context) return;
+    const actionBar = context.actionBar;
 
-    extension.youtubeDom.removeStaleActions(actionBar, videoInfo.videoId);
+    extension.youtubeDom.removeStaleActions(
+      document,
+      videoInfo.videoId,
+      actionBar
+    );
     const theme = getPageTheme();
-    const recipientNpub = extension.youtubeDom.resolveRecipientNpub(document);
+    const recipientNpub = extension.youtubeDom.resolveRecipientNpub(
+      context.container
+    );
     const existingAction = extension.youtubeDom.findAction(actionBar, videoInfo.videoId);
     if (existingAction) {
       extension.youtubeDom.updateActionTheme(existingAction, theme);
