@@ -220,6 +220,7 @@ export default class NostrZap extends NostrUserComponent {
       const relays = this.getRelays().join(",");
 
       this.cachedAmountDialog = await openZapModal({
+        actionId: trustedContext?.actionId,
         npub,
         relays,
         cachedDialogComponent: this.cachedAmountDialog,
@@ -309,6 +310,7 @@ export default class NostrZap extends NostrUserComponent {
   private async updateZapCount() {
     if (!this.user) return;
     const seq = ++this.zapCountLoadSeq;
+    const trustedContext = getTrustedActionContext(this);
 
     try {
       this.zapListStatus.set(NCStatus.Loading);
@@ -320,7 +322,8 @@ export default class NostrZap extends NostrUserComponent {
       const result = await fetchTotalZapAmount({ 
         pubkey: this.user.pubkey, 
         relays: this.getRelays(),
-        url: this.getAttribute("url") || undefined
+        url: trustedContext?.url || this.getAttribute("url") || undefined,
+        actionId: trustedContext?.actionId,
       });
       if (seq !== this.zapCountLoadSeq) return;
 

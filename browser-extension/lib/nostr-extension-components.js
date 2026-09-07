@@ -19704,6 +19704,7 @@
     buildUrlATag: () => buildUrlATag,
     extractProfileMetadataContent: () => extractProfileMetadataContent,
     fetchInvoice: () => fetchInvoice,
+    fetchInvoiceForAction: () => fetchInvoiceForAction,
     fetchTotalZapAmount: () => fetchTotalZapAmount,
     getBatchedProfileMetadata: () => getBatchedProfileMetadata,
     getProfileMetadata: () => getProfileMetadata,
@@ -19738,7 +19739,7 @@
       return null;
     }
   }
-  var profileCache, ZAP_PROVIDER_CACHE_TTL_MS, ZAP_PROVIDER_NEGATIVE_TTL_MS, ZAP_RECEIPT_POLL_TIMEOUT_MS, zapProviderCache, profileCacheKey, getVerifiedProfileEvent, getProfileMetadata, PROFILE_QUERY_BATCH_SIZE, getBatchedProfileMetadata, extractProfileMetadataContent, getZapEndpoint2, getZapProviderInfo, buildUrlATag, signEvent2, makeZapEvent, fetchInvoice, generateRandomPrivKey, isNip07ExtAvailable, fetchTotalZapAmount, listenForZapReceipt;
+  var profileCache, ZAP_PROVIDER_CACHE_TTL_MS, ZAP_PROVIDER_NEGATIVE_TTL_MS, ZAP_RECEIPT_POLL_TIMEOUT_MS, zapProviderCache, profileCacheKey, getVerifiedProfileEvent, getProfileMetadata, PROFILE_QUERY_BATCH_SIZE, getBatchedProfileMetadata, extractProfileMetadataContent, getZapEndpoint2, getZapProviderInfo, buildUrlATag, signEvent2, makeZapEvent, fetchInvoiceForAction, fetchInvoice, generateRandomPrivKey, isNip07ExtAvailable, fetchTotalZapAmount, listenForZapReceipt;
   var init_zap_utils = __esm({
     "src/nostr-zap-button/zap-utils.ts"() {
       "use strict";
@@ -19922,6 +19923,34 @@
         }
         return signEvent2(event, anon);
       };
+      fetchInvoiceForAction = async ({
+        actionId,
+        amount,
+        comment,
+        authorId,
+        normalizedRelays,
+        anon,
+        url
+      }) => {
+        const transport = getRelayTransport();
+        if (!transport?.fetchZapInvoice) {
+          throw new Error("Trusted Zap transport is unavailable");
+        }
+        const zapEvent = await makeZapEvent({
+          profile: authorId,
+          amount,
+          relays: normalizedRelays,
+          comment: comment ?? "",
+          anon,
+          url
+        });
+        return transport.fetchZapInvoice(actionId, {
+          relays: normalizedRelays,
+          amount,
+          comment: comment ?? "",
+          zapEvent
+        });
+      };
       fetchInvoice = async ({
         zapEndpoint,
         amount,
@@ -19978,18 +20007,24 @@
       fetchTotalZapAmount = async ({
         pubkey,
         relays,
-        url
+        url,
+        actionId
       }) => {
         const transport = getRelayTransport();
         const pool = transport ? null : new SimplePool();
         let totalAmount = 0;
         const zapDetails = [];
         try {
-          const profileMetadata = await getProfileMetadata(pubkey, relays);
-          if (!profileMetadata) {
-            return { totalAmount: 0, zapDetails: [] };
+          let provider = null;
+          if (actionId && transport?.getZapProvider) {
+            provider = await transport.getZapProvider(actionId, relays);
+          } else {
+            const profileMetadata = await getProfileMetadata(pubkey, relays);
+            if (!profileMetadata) {
+              return { totalAmount: 0, zapDetails: [] };
+            }
+            provider = await getZapProviderInfo(profileMetadata);
           }
-          const provider = await getZapProviderInfo(profileMetadata);
           if (!provider) {
             return { totalAmount: 0, zapDetails: [] };
           }
@@ -26661,24 +26696,40 @@ ${url}`;
     async function loadInvoice(amountSats, comment, requestSeq) {
       const authorId = npubHex;
       const relaysArray = relays.split(",").map((r) => r.trim()).filter(Boolean);
-      const meta = await getProfileMetadata(authorId, relaysArray);
-      if (!meta) {
-        throw new Error("Profile not found. The user may not have a profile set up on the relays.");
+      let provider;
+      let invoice;
+      if (params.actionId && url) {
+        const trusted = await fetchInvoiceForAction({
+          actionId: params.actionId,
+          amount: amountSats * 1e3,
+          comment,
+          authorId,
+          normalizedRelays: relaysArray,
+          anon: params.anon ?? false,
+          url
+        });
+        provider = trusted.provider;
+        invoice = trusted.invoice;
+      } else {
+        const meta = await getProfileMetadata(authorId, relaysArray);
+        if (!meta) {
+          throw new Error("Profile not found. The user may not have a profile set up on the relays.");
+        }
+        provider = await getZapProviderInfo(meta);
+        if (!provider) {
+          throw new Error("Zap endpoint not found. The user may not have a Lightning address configured.");
+        }
+        invoice = await fetchInvoice({
+          zapEndpoint: provider.callback,
+          amount: amountSats * 1e3,
+          // -> msats
+          comment,
+          authorId,
+          normalizedRelays: relaysArray,
+          anon: params.anon ?? false,
+          url
+        });
       }
-      const provider = await getZapProviderInfo(meta);
-      if (!provider) {
-        throw new Error("Zap endpoint not found. The user may not have a Lightning address configured.");
-      }
-      const invoice = await fetchInvoice({
-        zapEndpoint: provider.callback,
-        amount: amountSats * 1e3,
-        // -> msats
-        comment,
-        authorId,
-        normalizedRelays: relaysArray,
-        anon: params.anon ?? false,
-        url
-      });
       if (requestSeq !== invoiceRequestSeq) return null;
       currentInvoice = invoice;
       if (cleanupReceipt) cleanupReceipt();
@@ -28117,6 +28168,7 @@ ${url}`;
         }
         const relays = this.getRelays().join(",");
         this.cachedAmountDialog = await init({
+          actionId: trustedContext?.actionId,
           npub: npub2,
           relays,
           cachedDialogComponent: this.cachedAmountDialog,
@@ -28198,6 +28250,7 @@ ${url}`;
     async updateZapCount() {
       if (!this.user) return;
       const seq = ++this.zapCountLoadSeq;
+      const trustedContext = getTrustedActionContext(this);
       try {
         this.zapListStatus.set(1 /* Loading */);
         this.render();
@@ -28206,7 +28259,8 @@ ${url}`;
         const result = await fetchTotalZapAmount({
           pubkey: this.user.pubkey,
           relays: this.getRelays(),
-          url: this.getAttribute("url") || void 0
+          url: trustedContext?.url || this.getAttribute("url") || void 0,
+          actionId: trustedContext?.actionId
         });
         if (seq !== this.zapCountLoadSeq) return;
         this.totalZapAmount = result.totalAmount;
@@ -28666,7 +28720,7 @@ ${url}`;
             pendingDelete(requestId);
             reject(new ErrorConstructor("Relay request timed out"));
           },
-          operation === "publish" || operation === "httpGet" ? 12e3 : 4e3
+          operation === "publish" || operation === "getZapProvider" || operation === "fetchZapInvoice" ? 12e3 : 4e3
         );
         pendingSet(requestId, {
           operation,
@@ -28684,7 +28738,14 @@ ${url}`;
       getCachedLikeState: (relays, url) => request("getCachedLikeState", { relays, url }),
       getLikeState: (relays, url) => request("getLikeState", { relays, url }),
       publish: (relays, event, actionId) => request("publish", { relays, event, actionId }),
-      httpGet: (url) => request("httpGet", { url })
+      getZapProvider: (actionId, relays) => request("getZapProvider", { actionId, relays }),
+      fetchZapInvoice: (actionId, input) => request("fetchZapInvoice", {
+        actionId,
+        relays: input.relays,
+        amount: input.amount,
+        comment: input.comment,
+        zapEvent: input.zapEvent
+      })
     });
   }
   function createRelayChannels(cryptoImpl = globalThis.crypto) {

@@ -21,6 +21,7 @@ import { setTrustedInnerHTML } from '../common/trusted-html';
 
 import { 
   fetchInvoice, 
+  fetchInvoiceForAction,
   getProfileMetadata, 
   getZapProviderInfo, 
   listenForZapReceipt 
@@ -39,6 +40,7 @@ declare global {
 }
 
 export interface OpenZapModalParams {
+  actionId?: string;
   npub: string;
   relays: string;
   cachedDialogComponent?: DialogComponent | null;
@@ -130,26 +132,42 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
   ): Promise<string | null> {
     const authorId = npubHex;
     const relaysArray = relays.split(',').map(r => r.trim()).filter(Boolean);
-    const meta = await getProfileMetadata(authorId, relaysArray);
-    
-    if (!meta) {
-      throw new Error('Profile not found. The user may not have a profile set up on the relays.');
+    let provider;
+    let invoice;
+    if (params.actionId && url) {
+      const trusted = await fetchInvoiceForAction({
+        actionId: params.actionId,
+        amount: amountSats * 1000,
+        comment,
+        authorId,
+        normalizedRelays: relaysArray,
+        anon: params.anon ?? false,
+        url,
+      });
+      provider = trusted.provider;
+      invoice = trusted.invoice;
+    } else {
+      const meta = await getProfileMetadata(authorId, relaysArray);
+
+      if (!meta) {
+        throw new Error('Profile not found. The user may not have a profile set up on the relays.');
+      }
+
+      provider = await getZapProviderInfo(meta);
+      if (!provider) {
+        throw new Error('Zap endpoint not found. The user may not have a Lightning address configured.');
+      }
+
+      invoice = await fetchInvoice({
+        zapEndpoint: provider.callback,
+        amount: amountSats * 1000, // -> msats
+        comment,
+        authorId,
+        normalizedRelays: relaysArray,
+        anon: params.anon ?? false,
+        url: url,
+      });
     }
-    
-    const provider = await getZapProviderInfo(meta);
-    if (!provider) {
-      throw new Error('Zap endpoint not found. The user may not have a Lightning address configured.');
-    }
-    
-    const invoice = await fetchInvoice({
-      zapEndpoint: provider.callback,
-      amount: amountSats * 1000, // -> msats
-      comment,
-      authorId,
-      normalizedRelays: relaysArray,
-      anon: params.anon ?? false,
-      url: url,
-    });
     if (requestSeq !== invoiceRequestSeq) return null;
     currentInvoice = invoice;
 

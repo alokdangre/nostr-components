@@ -322,7 +322,11 @@ export function createMainRelayTransport(
           pendingDelete(requestId);
           reject(new ErrorConstructor('Relay request timed out'));
         },
-        operation === 'publish' || operation === 'httpGet' ? 12_000 : 4_000,
+        operation === 'publish' ||
+        operation === 'getZapProvider' ||
+        operation === 'fetchZapInvoice'
+          ? 12_000
+          : 4_000,
       );
       pendingSet(requestId, {
         operation,
@@ -345,7 +349,24 @@ export function createMainRelayTransport(
       request('getLikeState', { relays, url }),
     publish: (relays: string[], event: any, actionId?: string) =>
       request('publish', { relays, event, actionId }),
-    httpGet: (url: string) => request('httpGet', { url }),
+    getZapProvider: (actionId: string, relays: string[]) =>
+      request('getZapProvider', { actionId, relays }),
+    fetchZapInvoice: (
+      actionId: string,
+      input: {
+        relays: string[];
+        amount: number;
+        comment: string;
+        zapEvent: any;
+      },
+    ) =>
+      request('fetchZapInvoice', {
+        actionId,
+        relays: input.relays,
+        amount: input.amount,
+        comment: input.comment,
+        zapEvent: input.zapEvent,
+      }),
   });
 }
 

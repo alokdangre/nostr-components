@@ -302,6 +302,46 @@ const makeZapEvent = async ({
   return signEvent(event, anon);
 };
 
+export const fetchInvoiceForAction = async ({
+  actionId,
+  amount,
+  comment,
+  authorId,
+  normalizedRelays,
+  anon,
+  url,
+}: {
+  actionId: string;
+  amount: number;
+  comment?: string;
+  authorId: string;
+  normalizedRelays: string[];
+  anon?: boolean;
+  url: string;
+}): Promise<{
+  invoice: string;
+  provider: ZapProviderInfo;
+}> => {
+  const transport = getRelayTransport();
+  if (!transport?.fetchZapInvoice) {
+    throw new Error('Trusted Zap transport is unavailable');
+  }
+  const zapEvent = await makeZapEvent({
+    profile: authorId,
+    amount,
+    relays: normalizedRelays,
+    comment: comment ?? '',
+    anon,
+    url,
+  });
+  return transport.fetchZapInvoice(actionId, {
+    relays: normalizedRelays,
+    amount,
+    comment: comment ?? '',
+    zapEvent,
+  });
+};
+
 export const fetchInvoice = async ({
   zapEndpoint,
   amount,
@@ -426,10 +466,12 @@ export const fetchTotalZapAmount = async ({
   pubkey,
   relays,
   url,
+  actionId,
 }: {
   pubkey: string;
   relays: string[];
   url?: string;
+  actionId?: string;
 }): Promise<ZapAmountResult> => {
   const transport = getRelayTransport();
   const pool = transport ? null : new SimplePool();
@@ -437,12 +479,16 @@ export const fetchTotalZapAmount = async ({
   const zapDetails: ZapDetails[] = [];
 
   try {
-    const profileMetadata = await getProfileMetadata(pubkey, relays);
-    if (!profileMetadata) {
-      return { totalAmount: 0, zapDetails: [] };
+    let provider: ZapProviderInfo | null = null;
+    if (actionId && transport?.getZapProvider) {
+      provider = await transport.getZapProvider(actionId, relays);
+    } else {
+      const profileMetadata = await getProfileMetadata(pubkey, relays);
+      if (!profileMetadata) {
+        return { totalAmount: 0, zapDetails: [] };
+      }
+      provider = await getZapProviderInfo(profileMetadata);
     }
-
-    const provider = await getZapProviderInfo(profileMetadata);
     if (!provider) {
       // Fail closed: without LNURL nostrPubkey we cannot authenticate receipts.
       return { totalAmount: 0, zapDetails: [] };

@@ -1,11 +1,776 @@
 // SPDX-License-Identifier: MIT
 "use strict";
 (() => {
+  var __create = Object.create;
   var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __commonJS = (cb, mod2) => function __require() {
+    return mod2 || (0, cb[__getOwnPropNames(cb)[0]])((mod2 = { exports: {} }).exports, mod2), mod2.exports;
+  };
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
   };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toESM = (mod2, isNodeMode, target) => (target = mod2 != null ? __create(__getProtoOf(mod2)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod2 || !mod2.__esModule ? __defProp(target, "default", { value: mod2, enumerable: true }) : target,
+    mod2
+  ));
+
+  // node_modules/@scure/base/lib/index.js
+  var require_lib = __commonJS({
+    "node_modules/@scure/base/lib/index.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.bytes = exports.stringToBytes = exports.str = exports.bytesToString = exports.hex = exports.utf8 = exports.bech32m = exports.bech32 = exports.base58check = exports.base58xmr = exports.base58xrp = exports.base58flickr = exports.base58 = exports.base64url = exports.base64 = exports.base32crockford = exports.base32hex = exports.base32 = exports.base16 = exports.utils = exports.assertNumber = void 0;
+      function assertNumber2(n) {
+        if (!Number.isSafeInteger(n))
+          throw new Error(`Wrong integer: ${n}`);
+      }
+      exports.assertNumber = assertNumber2;
+      function chain2(...args) {
+        const wrap = (a, b) => (c) => a(b(c));
+        const encode = Array.from(args).reverse().reduce((acc, i2) => acc ? wrap(acc, i2.encode) : i2.encode, void 0);
+        const decode2 = args.reduce((acc, i2) => acc ? wrap(acc, i2.decode) : i2.decode, void 0);
+        return { encode, decode: decode2 };
+      }
+      function alphabet2(alphabet3) {
+        return {
+          encode: (digits) => {
+            if (!Array.isArray(digits) || digits.length && typeof digits[0] !== "number")
+              throw new Error("alphabet.encode input should be an array of numbers");
+            return digits.map((i2) => {
+              assertNumber2(i2);
+              if (i2 < 0 || i2 >= alphabet3.length)
+                throw new Error(`Digit index outside alphabet: ${i2} (alphabet: ${alphabet3.length})`);
+              return alphabet3[i2];
+            });
+          },
+          decode: (input) => {
+            if (!Array.isArray(input) || input.length && typeof input[0] !== "string")
+              throw new Error("alphabet.decode input should be array of strings");
+            return input.map((letter) => {
+              if (typeof letter !== "string")
+                throw new Error(`alphabet.decode: not string element=${letter}`);
+              const index = alphabet3.indexOf(letter);
+              if (index === -1)
+                throw new Error(`Unknown letter: "${letter}". Allowed: ${alphabet3}`);
+              return index;
+            });
+          }
+        };
+      }
+      function join2(separator = "") {
+        if (typeof separator !== "string")
+          throw new Error("join separator should be string");
+        return {
+          encode: (from) => {
+            if (!Array.isArray(from) || from.length && typeof from[0] !== "string")
+              throw new Error("join.encode input should be array of strings");
+            for (let i2 of from)
+              if (typeof i2 !== "string")
+                throw new Error(`join.encode: non-string input=${i2}`);
+            return from.join(separator);
+          },
+          decode: (to) => {
+            if (typeof to !== "string")
+              throw new Error("join.decode input should be string");
+            return to.split(separator);
+          }
+        };
+      }
+      function padding2(bits, chr = "=") {
+        assertNumber2(bits);
+        if (typeof chr !== "string")
+          throw new Error("padding chr should be string");
+        return {
+          encode(data) {
+            if (!Array.isArray(data) || data.length && typeof data[0] !== "string")
+              throw new Error("padding.encode input should be array of strings");
+            for (let i2 of data)
+              if (typeof i2 !== "string")
+                throw new Error(`padding.encode: non-string input=${i2}`);
+            while (data.length * bits % 8)
+              data.push(chr);
+            return data;
+          },
+          decode(input) {
+            if (!Array.isArray(input) || input.length && typeof input[0] !== "string")
+              throw new Error("padding.encode input should be array of strings");
+            for (let i2 of input)
+              if (typeof i2 !== "string")
+                throw new Error(`padding.decode: non-string input=${i2}`);
+            let end = input.length;
+            if (end * bits % 8)
+              throw new Error("Invalid padding: string should have whole number of bytes");
+            for (; end > 0 && input[end - 1] === chr; end--) {
+              if (!((end - 1) * bits % 8))
+                throw new Error("Invalid padding: string has too much padding");
+            }
+            return input.slice(0, end);
+          }
+        };
+      }
+      function normalize2(fn) {
+        if (typeof fn !== "function")
+          throw new Error("normalize fn should be function");
+        return { encode: (from) => from, decode: (to) => fn(to) };
+      }
+      function convertRadix3(data, from, to) {
+        if (from < 2)
+          throw new Error(`convertRadix: wrong from=${from}, base cannot be less than 2`);
+        if (to < 2)
+          throw new Error(`convertRadix: wrong to=${to}, base cannot be less than 2`);
+        if (!Array.isArray(data))
+          throw new Error("convertRadix: data should be array");
+        if (!data.length)
+          return [];
+        let pos = 0;
+        const res = [];
+        const digits = Array.from(data);
+        digits.forEach((d) => {
+          assertNumber2(d);
+          if (d < 0 || d >= from)
+            throw new Error(`Wrong integer: ${d}`);
+        });
+        while (true) {
+          let carry = 0;
+          let done = true;
+          for (let i2 = pos; i2 < digits.length; i2++) {
+            const digit = digits[i2];
+            const digitBase = from * carry + digit;
+            if (!Number.isSafeInteger(digitBase) || from * carry / from !== carry || digitBase - digit !== from * carry) {
+              throw new Error("convertRadix: carry overflow");
+            }
+            carry = digitBase % to;
+            digits[i2] = Math.floor(digitBase / to);
+            if (!Number.isSafeInteger(digits[i2]) || digits[i2] * to + carry !== digitBase)
+              throw new Error("convertRadix: carry overflow");
+            if (!done)
+              continue;
+            else if (!digits[i2])
+              pos = i2;
+            else
+              done = false;
+          }
+          res.push(carry);
+          if (done)
+            break;
+        }
+        for (let i2 = 0; i2 < data.length - 1 && data[i2] === 0; i2++)
+          res.push(0);
+        return res.reverse();
+      }
+      var gcd2 = (a, b) => !b ? a : gcd2(b, a % b);
+      var radix2carry2 = (from, to) => from + (to - gcd2(from, to));
+      function convertRadix22(data, from, to, padding3) {
+        if (!Array.isArray(data))
+          throw new Error("convertRadix2: data should be array");
+        if (from <= 0 || from > 32)
+          throw new Error(`convertRadix2: wrong from=${from}`);
+        if (to <= 0 || to > 32)
+          throw new Error(`convertRadix2: wrong to=${to}`);
+        if (radix2carry2(from, to) > 32) {
+          throw new Error(`convertRadix2: carry overflow from=${from} to=${to} carryBits=${radix2carry2(from, to)}`);
+        }
+        let carry = 0;
+        let pos = 0;
+        const mask = 2 ** to - 1;
+        const res = [];
+        for (const n of data) {
+          assertNumber2(n);
+          if (n >= 2 ** from)
+            throw new Error(`convertRadix2: invalid data word=${n} from=${from}`);
+          carry = carry << from | n;
+          if (pos + from > 32)
+            throw new Error(`convertRadix2: carry overflow pos=${pos} from=${from}`);
+          pos += from;
+          for (; pos >= to; pos -= to)
+            res.push((carry >> pos - to & mask) >>> 0);
+          carry &= 2 ** pos - 1;
+        }
+        carry = carry << to - pos & mask;
+        if (!padding3 && pos >= from)
+          throw new Error("Excess padding");
+        if (!padding3 && carry)
+          throw new Error(`Non-zero padding: ${carry}`);
+        if (padding3 && pos > 0)
+          res.push(carry >>> 0);
+        return res;
+      }
+      function radix3(num) {
+        assertNumber2(num);
+        return {
+          encode: (bytes4) => {
+            if (!(bytes4 instanceof Uint8Array))
+              throw new Error("radix.encode input should be Uint8Array");
+            return convertRadix3(Array.from(bytes4), 2 ** 8, num);
+          },
+          decode: (digits) => {
+            if (!Array.isArray(digits) || digits.length && typeof digits[0] !== "number")
+              throw new Error("radix.decode input should be array of strings");
+            return Uint8Array.from(convertRadix3(digits, num, 2 ** 8));
+          }
+        };
+      }
+      function radix22(bits, revPadding = false) {
+        assertNumber2(bits);
+        if (bits <= 0 || bits > 32)
+          throw new Error("radix2: bits should be in (0..32]");
+        if (radix2carry2(8, bits) > 32 || radix2carry2(bits, 8) > 32)
+          throw new Error("radix2: carry overflow");
+        return {
+          encode: (bytes4) => {
+            if (!(bytes4 instanceof Uint8Array))
+              throw new Error("radix2.encode input should be Uint8Array");
+            return convertRadix22(Array.from(bytes4), 8, bits, !revPadding);
+          },
+          decode: (digits) => {
+            if (!Array.isArray(digits) || digits.length && typeof digits[0] !== "number")
+              throw new Error("radix2.decode input should be array of strings");
+            return Uint8Array.from(convertRadix22(digits, bits, 8, revPadding));
+          }
+        };
+      }
+      function unsafeWrapper2(fn) {
+        if (typeof fn !== "function")
+          throw new Error("unsafeWrapper fn should be function");
+        return function(...args) {
+          try {
+            return fn.apply(null, args);
+          } catch (e) {
+          }
+        };
+      }
+      function checksum(len, fn) {
+        assertNumber2(len);
+        if (typeof fn !== "function")
+          throw new Error("checksum fn should be function");
+        return {
+          encode(data) {
+            if (!(data instanceof Uint8Array))
+              throw new Error("checksum.encode: input should be Uint8Array");
+            const checksum2 = fn(data).slice(0, len);
+            const res = new Uint8Array(data.length + len);
+            res.set(data);
+            res.set(checksum2, data.length);
+            return res;
+          },
+          decode(data) {
+            if (!(data instanceof Uint8Array))
+              throw new Error("checksum.decode: input should be Uint8Array");
+            const payload = data.slice(0, -len);
+            const newChecksum = fn(payload).slice(0, len);
+            const oldChecksum = data.slice(-len);
+            for (let i2 = 0; i2 < len; i2++)
+              if (newChecksum[i2] !== oldChecksum[i2])
+                throw new Error("Invalid checksum");
+            return payload;
+          }
+        };
+      }
+      exports.utils = { alphabet: alphabet2, chain: chain2, checksum, radix: radix3, radix2: radix22, join: join2, padding: padding2 };
+      exports.base16 = chain2(radix22(4), alphabet2("0123456789ABCDEF"), join2(""));
+      exports.base32 = chain2(radix22(5), alphabet2("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"), padding2(5), join2(""));
+      exports.base32hex = chain2(radix22(5), alphabet2("0123456789ABCDEFGHIJKLMNOPQRSTUV"), padding2(5), join2(""));
+      exports.base32crockford = chain2(radix22(5), alphabet2("0123456789ABCDEFGHJKMNPQRSTVWXYZ"), join2(""), normalize2((s) => s.toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1")));
+      exports.base64 = chain2(radix22(6), alphabet2("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"), padding2(6), join2(""));
+      exports.base64url = chain2(radix22(6), alphabet2("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"), padding2(6), join2(""));
+      var genBase582 = (abc) => chain2(radix3(58), alphabet2(abc), join2(""));
+      exports.base58 = genBase582("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz");
+      exports.base58flickr = genBase582("123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ");
+      exports.base58xrp = genBase582("rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz");
+      var XMR_BLOCK_LEN2 = [0, 2, 3, 5, 6, 7, 9, 10, 11];
+      exports.base58xmr = {
+        encode(data) {
+          let res = "";
+          for (let i2 = 0; i2 < data.length; i2 += 8) {
+            const block = data.subarray(i2, i2 + 8);
+            res += exports.base58.encode(block).padStart(XMR_BLOCK_LEN2[block.length], "1");
+          }
+          return res;
+        },
+        decode(str) {
+          let res = [];
+          for (let i2 = 0; i2 < str.length; i2 += 11) {
+            const slice = str.slice(i2, i2 + 11);
+            const blockLen = XMR_BLOCK_LEN2.indexOf(slice.length);
+            const block = exports.base58.decode(slice);
+            for (let j = 0; j < block.length - blockLen; j++) {
+              if (block[j] !== 0)
+                throw new Error("base58xmr: wrong padding");
+            }
+            res = res.concat(Array.from(block.slice(block.length - blockLen)));
+          }
+          return Uint8Array.from(res);
+        }
+      };
+      var base58check = (sha2563) => chain2(checksum(4, (data) => sha2563(sha2563(data))), exports.base58);
+      exports.base58check = base58check;
+      var BECH_ALPHABET2 = chain2(alphabet2("qpzry9x8gf2tvdw0s3jn54khce6mua7l"), join2(""));
+      var POLYMOD_GENERATORS2 = [996825010, 642813549, 513874426, 1027748829, 705979059];
+      function bech32Polymod2(pre) {
+        const b = pre >> 25;
+        let chk = (pre & 33554431) << 5;
+        for (let i2 = 0; i2 < POLYMOD_GENERATORS2.length; i2++) {
+          if ((b >> i2 & 1) === 1)
+            chk ^= POLYMOD_GENERATORS2[i2];
+        }
+        return chk;
+      }
+      function bechChecksum2(prefix, words, encodingConst = 1) {
+        const len = prefix.length;
+        let chk = 1;
+        for (let i2 = 0; i2 < len; i2++) {
+          const c = prefix.charCodeAt(i2);
+          if (c < 33 || c > 126)
+            throw new Error(`Invalid prefix (${prefix})`);
+          chk = bech32Polymod2(chk) ^ c >> 5;
+        }
+        chk = bech32Polymod2(chk);
+        for (let i2 = 0; i2 < len; i2++)
+          chk = bech32Polymod2(chk) ^ prefix.charCodeAt(i2) & 31;
+        for (let v of words)
+          chk = bech32Polymod2(chk) ^ v;
+        for (let i2 = 0; i2 < 6; i2++)
+          chk = bech32Polymod2(chk);
+        chk ^= encodingConst;
+        return BECH_ALPHABET2.encode(convertRadix22([chk % 2 ** 30], 30, 5, false));
+      }
+      function genBech322(encoding) {
+        const ENCODING_CONST = encoding === "bech32" ? 1 : 734539939;
+        const _words = radix22(5);
+        const fromWords = _words.decode;
+        const toWords = _words.encode;
+        const fromWordsUnsafe = unsafeWrapper2(fromWords);
+        function encode(prefix, words, limit2 = 90) {
+          if (typeof prefix !== "string")
+            throw new Error(`bech32.encode prefix should be string, not ${typeof prefix}`);
+          if (!Array.isArray(words) || words.length && typeof words[0] !== "number")
+            throw new Error(`bech32.encode words should be array of numbers, not ${typeof words}`);
+          const actualLength = prefix.length + 7 + words.length;
+          if (limit2 !== false && actualLength > limit2)
+            throw new TypeError(`Length ${actualLength} exceeds limit ${limit2}`);
+          prefix = prefix.toLowerCase();
+          return `${prefix}1${BECH_ALPHABET2.encode(words)}${bechChecksum2(prefix, words, ENCODING_CONST)}`;
+        }
+        function decode2(str, limit2 = 90) {
+          if (typeof str !== "string")
+            throw new Error(`bech32.decode input should be string, not ${typeof str}`);
+          if (str.length < 8 || limit2 !== false && str.length > limit2)
+            throw new TypeError(`Wrong string length: ${str.length} (${str}). Expected (8..${limit2})`);
+          const lowered = str.toLowerCase();
+          if (str !== lowered && str !== str.toUpperCase())
+            throw new Error(`String must be lowercase or uppercase`);
+          str = lowered;
+          const sepIndex = str.lastIndexOf("1");
+          if (sepIndex === 0 || sepIndex === -1)
+            throw new Error(`Letter "1" must be present between prefix and data only`);
+          const prefix = str.slice(0, sepIndex);
+          const _words2 = str.slice(sepIndex + 1);
+          if (_words2.length < 6)
+            throw new Error("Data must be at least 6 characters long");
+          const words = BECH_ALPHABET2.decode(_words2).slice(0, -6);
+          const sum = bechChecksum2(prefix, words, ENCODING_CONST);
+          if (!_words2.endsWith(sum))
+            throw new Error(`Invalid checksum in ${str}: expected "${sum}"`);
+          return { prefix, words };
+        }
+        const decodeUnsafe = unsafeWrapper2(decode2);
+        function decodeToBytes(str) {
+          const { prefix, words } = decode2(str, false);
+          return { prefix, words, bytes: fromWords(words) };
+        }
+        return { encode, decode: decode2, decodeToBytes, decodeUnsafe, fromWords, fromWordsUnsafe, toWords };
+      }
+      exports.bech32 = genBech322("bech32");
+      exports.bech32m = genBech322("bech32m");
+      exports.utf8 = {
+        encode: (data) => new TextDecoder().decode(data),
+        decode: (str) => new TextEncoder().encode(str)
+      };
+      exports.hex = chain2(radix22(4), alphabet2("0123456789abcdef"), join2(""), normalize2((s) => {
+        if (typeof s !== "string" || s.length % 2)
+          throw new TypeError(`hex.decode: expected string, got ${typeof s} with length ${s.length}`);
+        return s.toLowerCase();
+      }));
+      var CODERS2 = {
+        utf8: exports.utf8,
+        hex: exports.hex,
+        base16: exports.base16,
+        base32: exports.base32,
+        base64: exports.base64,
+        base64url: exports.base64url,
+        base58: exports.base58,
+        base58xmr: exports.base58xmr
+      };
+      var coderTypeError2 = `Invalid encoding type. Available types: ${Object.keys(CODERS2).join(", ")}`;
+      var bytesToString = (type, bytes4) => {
+        if (typeof type !== "string" || !CODERS2.hasOwnProperty(type))
+          throw new TypeError(coderTypeError2);
+        if (!(bytes4 instanceof Uint8Array))
+          throw new TypeError("bytesToString() expects Uint8Array");
+        return CODERS2[type].encode(bytes4);
+      };
+      exports.bytesToString = bytesToString;
+      exports.str = exports.bytesToString;
+      var stringToBytes = (type, str) => {
+        if (!CODERS2.hasOwnProperty(type))
+          throw new TypeError(coderTypeError2);
+        if (typeof str !== "string")
+          throw new TypeError("stringToBytes() expects string");
+        return CODERS2[type].decode(str);
+      };
+      exports.stringToBytes = stringToBytes;
+      exports.bytes = exports.stringToBytes;
+    }
+  });
+
+  // node_modules/light-bolt11-decoder/bolt11.js
+  var require_bolt11 = __commonJS({
+    "node_modules/light-bolt11-decoder/bolt11.js"(exports, module) {
+      var { bech32: bech322, hex: hex2, utf8: utf82 } = require_lib();
+      var DEFAULTNETWORK = {
+        // default network is bitcoin
+        bech32: "bc",
+        pubKeyHash: 0,
+        scriptHash: 5,
+        validWitnessVersions: [0]
+      };
+      var TESTNETWORK = {
+        bech32: "tb",
+        pubKeyHash: 111,
+        scriptHash: 196,
+        validWitnessVersions: [0]
+      };
+      var SIGNETNETWORK = {
+        bech32: "tbs",
+        pubKeyHash: 111,
+        scriptHash: 196,
+        validWitnessVersions: [0]
+      };
+      var REGTESTNETWORK = {
+        bech32: "bcrt",
+        pubKeyHash: 111,
+        scriptHash: 196,
+        validWitnessVersions: [0]
+      };
+      var SIMNETWORK = {
+        bech32: "sb",
+        pubKeyHash: 63,
+        scriptHash: 123,
+        validWitnessVersions: [0]
+      };
+      var FEATUREBIT_ORDER = [
+        "option_data_loss_protect",
+        "initial_routing_sync",
+        "option_upfront_shutdown_script",
+        "gossip_queries",
+        "var_onion_optin",
+        "gossip_queries_ex",
+        "option_static_remotekey",
+        "payment_secret",
+        "basic_mpp",
+        "option_support_large_channel"
+      ];
+      var DIVISORS = {
+        m: BigInt(1e3),
+        u: BigInt(1e6),
+        n: BigInt(1e9),
+        p: BigInt(1e12)
+      };
+      var MAX_MILLISATS = BigInt("2100000000000000000");
+      var MILLISATS_PER_BTC = BigInt(1e11);
+      var TAGCODES = {
+        payment_hash: 1,
+        payment_secret: 16,
+        description: 13,
+        payee: 19,
+        description_hash: 23,
+        // commit to longer descriptions (used by lnurl-pay)
+        expiry: 6,
+        // default: 3600 (1 hour)
+        min_final_cltv_expiry: 24,
+        // default: 9
+        fallback_address: 9,
+        route_hint: 3,
+        // for extra routing info (private etc.)
+        feature_bits: 5,
+        metadata: 27
+      };
+      var TAGNAMES = {};
+      for (let i2 = 0, keys = Object.keys(TAGCODES); i2 < keys.length; i2++) {
+        const currentName = keys[i2];
+        const currentCode = TAGCODES[keys[i2]].toString();
+        TAGNAMES[currentCode] = currentName;
+      }
+      var TAGPARSERS = {
+        1: (words) => hex2.encode(bech322.fromWordsUnsafe(words)),
+        // 256 bits
+        16: (words) => hex2.encode(bech322.fromWordsUnsafe(words)),
+        // 256 bits
+        13: (words) => utf82.encode(bech322.fromWordsUnsafe(words)),
+        // string variable length
+        19: (words) => hex2.encode(bech322.fromWordsUnsafe(words)),
+        // 264 bits
+        23: (words) => hex2.encode(bech322.fromWordsUnsafe(words)),
+        // 256 bits
+        27: (words) => hex2.encode(bech322.fromWordsUnsafe(words)),
+        // variable
+        6: wordsToIntBE,
+        // default: 3600 (1 hour)
+        24: wordsToIntBE,
+        // default: 9
+        3: routingInfoParser,
+        // for extra routing info (private etc.)
+        5: featureBitsParser
+        // keep feature bits as array of 5 bit words
+      };
+      function getUnknownParser(tagCode) {
+        return (words) => ({
+          tagCode: parseInt(tagCode),
+          words: bech322.encode("unknown", words, Number.MAX_SAFE_INTEGER)
+        });
+      }
+      function wordsToIntBE(words) {
+        return words.reverse().reduce((total, item, index) => {
+          return total + item * Math.pow(32, index);
+        }, 0);
+      }
+      function routingInfoParser(words) {
+        const routes = [];
+        let pubkey, shortChannelId, feeBaseMSats, feeProportionalMillionths, cltvExpiryDelta;
+        let routesBuffer = bech322.fromWordsUnsafe(words);
+        while (routesBuffer.length > 0) {
+          pubkey = hex2.encode(routesBuffer.slice(0, 33));
+          shortChannelId = hex2.encode(routesBuffer.slice(33, 41));
+          feeBaseMSats = parseInt(hex2.encode(routesBuffer.slice(41, 45)), 16);
+          feeProportionalMillionths = parseInt(
+            hex2.encode(routesBuffer.slice(45, 49)),
+            16
+          );
+          cltvExpiryDelta = parseInt(hex2.encode(routesBuffer.slice(49, 51)), 16);
+          routesBuffer = routesBuffer.slice(51);
+          routes.push({
+            pubkey,
+            short_channel_id: shortChannelId,
+            fee_base_msat: feeBaseMSats,
+            fee_proportional_millionths: feeProportionalMillionths,
+            cltv_expiry_delta: cltvExpiryDelta
+          });
+        }
+        return routes;
+      }
+      function featureBitsParser(words) {
+        const bools = words.slice().reverse().map((word) => [
+          !!(word & 1),
+          !!(word & 2),
+          !!(word & 4),
+          !!(word & 8),
+          !!(word & 16)
+        ]).reduce((finalArr, itemArr) => finalArr.concat(itemArr), []);
+        while (bools.length < FEATUREBIT_ORDER.length * 2) {
+          bools.push(false);
+        }
+        const featureBits = {};
+        FEATUREBIT_ORDER.forEach((featureName, index) => {
+          let status;
+          if (bools[index * 2]) {
+            status = "required";
+          } else if (bools[index * 2 + 1]) {
+            status = "supported";
+          } else {
+            status = "unsupported";
+          }
+          featureBits[featureName] = status;
+        });
+        const extraBits = bools.slice(FEATUREBIT_ORDER.length * 2);
+        featureBits.extra_bits = {
+          start_bit: FEATUREBIT_ORDER.length * 2,
+          bits: extraBits,
+          has_required: extraBits.reduce(
+            (result, bit, index) => index % 2 !== 0 ? result || false : result || bit,
+            false
+          )
+        };
+        return featureBits;
+      }
+      function hrpToMillisat(hrpString, outputString) {
+        let divisor, value;
+        if (hrpString.slice(-1).match(/^[munp]$/)) {
+          divisor = hrpString.slice(-1);
+          value = hrpString.slice(0, -1);
+        } else if (hrpString.slice(-1).match(/^[^munp0-9]$/)) {
+          throw new Error("Not a valid multiplier for the amount");
+        } else {
+          value = hrpString;
+        }
+        if (!value.match(/^\d+$/))
+          throw new Error("Not a valid human readable amount");
+        const valueBN = BigInt(value);
+        const millisatoshisBN = divisor ? valueBN * MILLISATS_PER_BTC / DIVISORS[divisor] : valueBN * MILLISATS_PER_BTC;
+        if (divisor === "p" && !(valueBN % BigInt(10) === BigInt(0)) || millisatoshisBN > MAX_MILLISATS) {
+          throw new Error("Amount is outside of valid range");
+        }
+        return outputString ? millisatoshisBN.toString() : millisatoshisBN;
+      }
+      function decode2(paymentRequest, network) {
+        if (typeof paymentRequest !== "string")
+          throw new Error("Lightning Payment Request must be string");
+        if (paymentRequest.slice(0, 2).toLowerCase() !== "ln")
+          throw new Error("Not a proper lightning payment request");
+        const sections = [];
+        const decoded = bech322.decode(paymentRequest, Number.MAX_SAFE_INTEGER);
+        paymentRequest = paymentRequest.toLowerCase();
+        const prefix = decoded.prefix;
+        let words = decoded.words;
+        let letters = paymentRequest.slice(prefix.length + 1);
+        let sigWords = words.slice(-104);
+        words = words.slice(0, -104);
+        let prefixMatches = prefix.match(/^ln(\S+?)(\d*)([a-zA-Z]?)$/);
+        if (prefixMatches && !prefixMatches[2])
+          prefixMatches = prefix.match(/^ln(\S+)$/);
+        if (!prefixMatches) {
+          throw new Error("Not a proper lightning payment request");
+        }
+        sections.push({
+          name: "lightning_network",
+          letters: "ln"
+        });
+        const bech32Prefix = prefixMatches[1];
+        let coinNetwork;
+        if (!network) {
+          switch (bech32Prefix) {
+            case DEFAULTNETWORK.bech32:
+              coinNetwork = DEFAULTNETWORK;
+              break;
+            case TESTNETWORK.bech32:
+              coinNetwork = TESTNETWORK;
+              break;
+            case SIGNETNETWORK.bech32:
+              coinNetwork = SIGNETNETWORK;
+              break;
+            case REGTESTNETWORK.bech32:
+              coinNetwork = REGTESTNETWORK;
+              break;
+            case SIMNETWORK.bech32:
+              coinNetwork = SIMNETWORK;
+              break;
+          }
+        } else {
+          if (network.bech32 === void 0 || network.pubKeyHash === void 0 || network.scriptHash === void 0 || !Array.isArray(network.validWitnessVersions))
+            throw new Error("Invalid network");
+          coinNetwork = network;
+        }
+        if (!coinNetwork || coinNetwork.bech32 !== bech32Prefix) {
+          throw new Error("Unknown coin bech32 prefix");
+        }
+        sections.push({
+          name: "coin_network",
+          letters: bech32Prefix,
+          value: coinNetwork
+        });
+        const value = prefixMatches[2];
+        let millisatoshis;
+        if (value) {
+          const divisor = prefixMatches[3];
+          millisatoshis = hrpToMillisat(value + divisor, true);
+          sections.push({
+            name: "amount",
+            letters: prefixMatches[2] + prefixMatches[3],
+            value: millisatoshis
+          });
+        } else {
+          millisatoshis = null;
+        }
+        sections.push({
+          name: "separator",
+          letters: "1"
+        });
+        const timestamp = wordsToIntBE(words.slice(0, 7));
+        words = words.slice(7);
+        sections.push({
+          name: "timestamp",
+          letters: letters.slice(0, 7),
+          value: timestamp
+        });
+        letters = letters.slice(7);
+        let tagName, parser, tagLength, tagWords;
+        while (words.length > 0) {
+          const tagCode = words[0].toString();
+          tagName = TAGNAMES[tagCode] || "unknown_tag";
+          parser = TAGPARSERS[tagCode] || getUnknownParser(tagCode);
+          words = words.slice(1);
+          tagLength = wordsToIntBE(words.slice(0, 2));
+          words = words.slice(2);
+          tagWords = words.slice(0, tagLength);
+          words = words.slice(tagLength);
+          sections.push({
+            name: tagName,
+            tag: letters[0],
+            letters: letters.slice(0, 1 + 2 + tagLength),
+            value: parser(tagWords)
+            // see: parsers for more comments
+          });
+          letters = letters.slice(1 + 2 + tagLength);
+        }
+        sections.push({
+          name: "signature",
+          letters: letters.slice(0, 104),
+          value: hex2.encode(bech322.fromWordsUnsafe(sigWords))
+        });
+        letters = letters.slice(104);
+        sections.push({
+          name: "checksum",
+          letters
+        });
+        let result = {
+          paymentRequest,
+          sections,
+          get expiry() {
+            let exp = sections.find((s) => s.name === "expiry");
+            if (exp) return getValue("timestamp") + exp.value;
+          },
+          get route_hints() {
+            return sections.filter((s) => s.name === "route_hint").map((s) => s.value);
+          }
+        };
+        for (let name in TAGCODES) {
+          if (name === "route_hint") {
+            continue;
+          }
+          Object.defineProperty(result, name, {
+            get() {
+              return getValue(name);
+            }
+          });
+        }
+        return result;
+        function getValue(name) {
+          let section = sections.find((s) => s.name === name);
+          return section ? section.value : void 0;
+        }
+      }
+      module.exports = {
+        decode: decode2,
+        hrpToMillisat
+      };
+    }
+  });
 
   // node_modules/nostr-tools/node_modules/@noble/curves/node_modules/@noble/hashes/esm/_assert.js
   function number(n) {
@@ -6719,6 +7484,7 @@
   }
 
   // browser-extension/src/relay-client.js
+  var import_light_bolt11_decoder = __toESM(require_bolt11(), 1);
   (function() {
     const extension = globalThis.NostrLikeExtension = globalThis.NostrLikeExtension || {};
     const REQUEST_SOURCE = "nostr-components-relay-main";
@@ -7143,13 +7909,23 @@
       }
       return event;
     }
+    function decodeRecipientNpub(value) {
+      if (!value) return null;
+      try {
+        const decoded = nip19_exports.decode(value);
+        return decoded.type === "npub" && HEX_64_PATTERN.test(String(decoded.data || "")) ? String(decoded.data).toLowerCase() : null;
+      } catch (_error) {
+        return null;
+      }
+    }
     function registerActionContext(actionId, context) {
       if (!ACTION_ID_PATTERN.test(String(actionId || "")) || !context || context.kind !== "x" && context.kind !== "youtube" || !isAllowedContentUrl(context.url)) {
         throw new Error("Invalid isolated action context");
       }
       actionContexts.set(actionId, {
         kind: context.kind,
-        url: context.url
+        url: context.url,
+        recipientPubkey: decodeRecipientNpub(context.recipientNpub)
       });
       if (actionContexts.size > 2048) {
         actionContexts.delete(actionContexts.keys().next().value);
@@ -7202,22 +7978,174 @@
       }
       return Promise.reject(new Error("Browser runtime API is not available"));
     }
-    async function handleRequest(pool, message) {
-      if (message.operation === "httpGet") {
-        const payload2 = message.payload;
-        const normalized = extension.zapHttp && extension.zapHttp.normalizeZapHttpUrl(payload2 && payload2.url);
-        if (!payload2 || Object.keys(payload2).some((key) => key !== "url") || !normalized) {
-          throw new Error("HTTPS request contains an unsupported URL");
-        }
-        return sendHttpsJsonRequest(normalized);
+    function getActionContext(actionId, requireRecipient) {
+      const normalizedId = String(actionId || "");
+      const context = ACTION_ID_PATTERN.test(normalizedId) ? actionContexts.get(normalizedId) : null;
+      if (!context || requireRecipient && !context.recipientPubkey) {
+        throw new Error("Request is not bound to an active action");
       }
+      return context;
+    }
+    function profileLnurl(content) {
+      try {
+        const metadata = JSON.parse(content || "{}");
+        if (typeof metadata.lud16 === "string") {
+          const value = metadata.lud16;
+          const separator = value.indexOf("@");
+          if (separator <= 0 || separator !== value.lastIndexOf("@") || !/^[A-Za-z0-9._-]+$/.test(value.slice(0, separator)) || !/^[A-Za-z0-9.-]+$/.test(value.slice(separator + 1))) {
+            return null;
+          }
+          const name = value.slice(0, separator);
+          const domain = value.slice(separator + 1);
+          const parsed = new URL(
+            "/.well-known/lnurlp/" + encodeURIComponent(name),
+            "https://" + domain
+          );
+          return parsed.protocol === "https:" && parsed.port === "" ? parsed.toString() : null;
+        }
+        if (typeof metadata.lud06 === "string") {
+          const decoded = bech32.decode(metadata.lud06, 1e3);
+          const bytes4 = Uint8Array.from(bech32.fromWords(decoded.words));
+          const parsed = new URL(new TextDecoder().decode(bytes4));
+          return parsed.protocol === "https:" ? parsed.toString() : null;
+        }
+      } catch (_error) {
+        return null;
+      }
+      return null;
+    }
+    async function resolveZapProvider(pool, relays, context) {
+      const events = await queryWithFastQuorum(pool, relays, {
+        kinds: [0],
+        authors: [context.recipientPubkey],
+        limit: 1
+      });
+      const profiles = events.filter(function(event) {
+        return event?.kind === 0 && String(event.pubkey || "").toLowerCase() === context.recipientPubkey && verifyEvent(event);
+      }).sort(function(left, right) {
+        return right.created_at - left.created_at;
+      });
+      const lnurl = profiles.length > 0 ? profileLnurl(profiles[0].content) : null;
+      if (!lnurl) {
+        throw new Error("Zap recipient has no valid LNURL provider");
+      }
+      const response = await sendHttpsJsonRequest(lnurl);
+      const body = response?.json;
+      if (response?.status < 200 || response?.status >= 300 || !body || typeof body !== "object" || body.allowsNostr !== true || !HEX_64_PATTERN.test(String(body.nostrPubkey || ""))) {
+        throw new Error("Zap provider returned invalid metadata");
+      }
+      const callback = extension.zapHttp?.normalizeZapHttpUrl(body.callback);
+      if (!callback) {
+        throw new Error("Zap provider returned an invalid callback");
+      }
+      return {
+        lnurl,
+        callback,
+        nostrPubkey: String(body.nostrPubkey).toLowerCase(),
+        minSendable: Number.isFinite(body.minSendable) ? body.minSendable : null,
+        maxSendable: Number.isFinite(body.maxSendable) ? body.maxSendable : null,
+        commentAllowed: Number.isInteger(body.commentAllowed) ? body.commentAllowed : 0
+      };
+    }
+    function getExactTag(event, name) {
+      const matches = event.tags.filter(function(tag) {
+        return Array.isArray(tag) && tag.length >= 2 && tag[0] === name;
+      });
+      return matches.length === 1 ? matches[0][1] : null;
+    }
+    function validateBoundZapRequest(event, context, amount, comment) {
+      if (!event || typeof event !== "object" || event.kind !== 9734 || event.content !== comment || !Array.isArray(event.tags) || event.tags.some(function(tag) {
+        return !Array.isArray(tag) || tag.some(function(value) {
+          return typeof value !== "string";
+        });
+      }) || !verifyEvent(event)) {
+        return null;
+      }
+      const expectedATag = "39735:" + context.recipientPubkey + ":" + normalizeURL2(context.url);
+      if (String(getExactTag(event, "p") || "").toLowerCase() !== context.recipientPubkey || getExactTag(event, "amount") !== String(amount) || getExactTag(event, "a") !== expectedATag) {
+        return null;
+      }
+      return event;
+    }
+    function getInvoiceAmountMsats(invoice) {
+      try {
+        const decoded = (0, import_light_bolt11_decoder.decode)(invoice);
+        const amount = decoded.sections.find(function(section) {
+          return section.name === "amount";
+        });
+        if (!amount?.value) return null;
+        const value = Number(amount.value);
+        return Number.isFinite(value) && value > 0 ? value : null;
+      } catch (_error) {
+        return null;
+      }
+    }
+    async function fetchZapInvoice(pool, relays, payload) {
+      const context = getActionContext(payload?.actionId, true);
+      const amount = payload?.amount;
+      const comment = typeof payload?.comment === "string" ? payload.comment : "";
+      if (!Number.isInteger(amount) || amount < 1e3 || amount > 21e7 || comment.length > 280 || Object.keys(payload).some(
+        (key) => key !== "actionId" && key !== "relays" && key !== "amount" && key !== "comment" && key !== "zapEvent"
+      )) {
+        throw new Error("Zap invoice request contains unexpected data");
+      }
+      const zapEvent = validateBoundZapRequest(
+        payload.zapEvent,
+        context,
+        amount,
+        comment
+      );
+      if (!zapEvent) {
+        throw new Error("Zap request is not bound to the active recipient");
+      }
+      const provider = await resolveZapProvider(pool, relays, context);
+      if (provider.minSendable !== null && amount < provider.minSendable || provider.maxSendable !== null && amount > provider.maxSendable || comment.length > provider.commentAllowed) {
+        throw new Error("Zap amount or comment is not supported by the provider");
+      }
+      const callback = new URL(provider.callback);
+      callback.searchParams.set("amount", String(amount));
+      callback.searchParams.set("nostr", JSON.stringify(zapEvent));
+      if (comment) callback.searchParams.set("comment", comment);
+      const response = await sendHttpsJsonRequest(callback.toString());
+      const invoice = response?.json?.pr;
+      if (response?.status < 200 || response?.status >= 300 || typeof invoice !== "string" || getInvoiceAmountMsats(invoice) !== amount) {
+        throw new Error("Zap provider returned an invalid invoice");
+      }
+      return {
+        invoice,
+        provider: {
+          lnurl: provider.lnurl,
+          callback: provider.callback,
+          nostrPubkey: provider.nostrPubkey
+        }
+      };
+    }
+    function isFilterBoundToAction(filter) {
+      for (const context of actionContexts.values()) {
+        if (filter.kinds[0] === 17 && filter["#i"]?.[0] === context.url) {
+          return true;
+        }
+        if (filter.kinds[0] === 0 && context.recipientPubkey && filter.authors.every(
+          (author) => author === context.recipientPubkey
+        )) {
+          return true;
+        }
+        if (filter.kinds[0] === 9735 && context.recipientPubkey === filter["#p"]?.[0] && (!filter["#a"] || filter["#a"][0] === "39735:" + context.recipientPubkey + ":" + context.url)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    async function handleRequest(pool, message) {
       const payload = message.payload;
       const relays = validateRelays(payload && payload.relays);
       if (!relays) {
         throw new Error("Relay request contains an unsupported relay list");
       }
       if (message.operation === "getCachedLikeState" || message.operation === "getLikeState") {
-        if (!payload || Object.keys(payload).some((key) => key !== "relays" && key !== "url") || !isAllowedContentUrl(payload.url)) {
+        if (!payload || Object.keys(payload).some((key) => key !== "relays" && key !== "url") || !isAllowedContentUrl(payload.url) || !Array.from(actionContexts.values()).some(
+          (context) => context.url === payload.url
+        )) {
           throw new Error("Known-reaction request contains unexpected data");
         }
         const publicKey = await extension.storage.getKnownPubkey();
@@ -7259,7 +8187,7 @@
       }
       if (message.operation === "query") {
         const filter = validateFilter(payload.filter);
-        if (!filter) {
+        if (!filter || !isFilterBoundToAction(filter)) {
           throw new Error("Relay request contains an unsupported filter");
         }
         const events = await queryWithFastQuorum(pool, relays, filter);
@@ -7296,6 +8224,23 @@
         await extension.storage.setKnownPubkey(event.pubkey);
         await rememberRecentReaction(event);
         return null;
+      }
+      if (message.operation === "getZapProvider" || message.operation === "fetchZapInvoice") {
+        const context = getActionContext(payload?.actionId, true);
+        if (message.operation === "getZapProvider") {
+          if (Object.keys(payload).some(
+            (key) => key !== "actionId" && key !== "relays"
+          )) {
+            throw new Error("Zap provider request contains unexpected data");
+          }
+          const provider = await resolveZapProvider(pool, relays, context);
+          return {
+            lnurl: provider.lnurl,
+            callback: provider.callback,
+            nostrPubkey: provider.nostrPubkey
+          };
+        }
+        return fetchZapInvoice(pool, relays, payload);
       }
       throw new Error("Unsupported relay operation");
     }
@@ -7398,6 +8343,9 @@
   })();
 })();
 /*! Bundled license information:
+
+@scure/base/lib/index.js:
+  (*! scure-base - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
 
 @noble/hashes/esm/utils.js:
   (*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) *)

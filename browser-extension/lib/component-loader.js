@@ -68,7 +68,8 @@
     };
     extension.relayClient.registerActionContext(next.actionId, {
       kind: next.kind,
-      url: next.url
+      url: next.url,
+      recipientNpub: next.recipientNpub
     });
     actionContexts.set(slot, next);
   }

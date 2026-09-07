@@ -5,6 +5,12 @@ export interface NostrRelayHttpGetResult {
   json: any;
 }
 
+export interface NostrRelayZapProvider {
+  lnurl: string;
+  callback: string;
+  nostrPubkey: string;
+}
+
 export interface NostrRelayTransport {
   query(relays: string[], filter: Record<string, unknown>): Promise<any[]>;
   getCachedLikeState?(
@@ -28,6 +34,22 @@ export interface NostrRelayTransport {
     event: any,
     actionId?: string,
   ): Promise<void>;
+  getZapProvider?(
+    actionId: string,
+    relays: string[],
+  ): Promise<NostrRelayZapProvider>;
+  fetchZapInvoice?(
+    actionId: string,
+    request: {
+      relays: string[];
+      amount: number;
+      comment: string;
+      zapEvent: any;
+    },
+  ): Promise<{
+    invoice: string;
+    provider: NostrRelayZapProvider;
+  }>;
   /** Host-proxied HTTPS GET for LNURL/invoice JSON when page CSP blocks fetch. */
   httpGet?(url: string): Promise<NostrRelayHttpGetResult>;
 }

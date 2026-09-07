@@ -11,6 +11,10 @@ import {
 } from '../src/component-hydrator.js';
 import { createMainRelayTransport } from '../src/main-relay-transport';
 import { getTrustedActionContext } from '../../src/common/trusted-action-context';
+import {
+  BOLT11_20U,
+  BOLT11_20U_AMOUNT_MSATS
+} from '../../src/nostr-zap-button/__tests__/fixtures';
 
 await import('../lib/url.js');
 await import('../lib/zap-http.js');
@@ -1221,8 +1225,9 @@ describe('CSP-safe component and relay integration', function () {
       throw new Error('page replaced crypto.getRandomValues');
     });
 
-    const requestPromise = transport.httpGet(
-      'https://ln.example/.well-known/lnurlp/alice'
+    const requestPromise = transport.getLikeState(
+      ['wss://relay.damus.io'],
+      'https://x.com/alice/status/42'
     );
     for (
       let attempt = 0;
@@ -1239,9 +1244,9 @@ describe('CSP-safe component and relay integration', function () {
       source: 'nostr-components-relay-extension',
       requestId: requestMessage.requestId,
       requestMac: 'f'.repeat(64),
-      operation: 'httpGet',
+      operation: 'getLikeState',
       ok: true,
-      result: { status: 200, json: { pr: 'lnbc1replayed' } }
+      result: { totalCount: 99, isLiked: true }
     };
     replayedResponse.mac = await authenticator.signResponse(replayedResponse);
     const responseHandler = pageWindow.addEventListener.mock.calls[0][1];
@@ -1263,7 +1268,7 @@ describe('CSP-safe component and relay integration', function () {
       requestMac: requestMessage.mac,
       operation: 'query',
       ok: true,
-      result: { status: 200, json: { pr: 'lnbc1wrongoperation' } }
+      result: { totalCount: 99, isLiked: true }
     };
     wrongOperationResponse.mac = await authenticator.signResponse(
       wrongOperationResponse
@@ -1280,9 +1285,9 @@ describe('CSP-safe component and relay integration', function () {
       source: 'nostr-components-relay-extension',
       requestId: requestMessage.requestId,
       requestMac: requestMessage.mac,
-      operation: 'httpGet',
+      operation: 'getLikeState',
       ok: true,
-      result: { status: 200, json: { pr: 'lnbc1original' } }
+      result: { totalCount: 1, isLiked: false }
     };
     relayResponse.mac = await authenticator.signResponse(relayResponse);
     const handling = responseHandler({
@@ -1290,12 +1295,12 @@ describe('CSP-safe component and relay integration', function () {
       origin: 'https://x.com',
       data: relayResponse
     });
-    relayResponse.result.json.pr = 'lnbc1attacker';
+    relayResponse.result.totalCount = 999;
 
     await handling;
     await expect(requestPromise).resolves.toEqual({
-      status: 200,
-      json: { pr: 'lnbc1original' }
+      totalCount: 1,
+      isLiked: false
     });
     expect(pageWindow.postMessage.mock.calls[0][0]).not.toHaveProperty(
       'channel'
@@ -1553,6 +1558,19 @@ describe('CSP-safe component and relay integration', function () {
         { relays: relays, url: filter['#i'][0] }
       )
     });
+    await onMessage({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '6'.repeat(32),
+        'getLikeState',
+        {
+          relays: relays,
+          url: 'https://x.com/unrelated/status/999'
+        }
+      )
+    });
 
     const signedEvent = finalizeEvent(
       {
@@ -1650,6 +1668,7 @@ describe('CSP-safe component and relay integration', function () {
     expect(responses.map((entry) => entry.message.ok)).toEqual([
       true,
       false,
+      false,
       true,
       true,
       false
@@ -1661,7 +1680,7 @@ describe('CSP-safe component and relay integration', function () {
       isLiked: true
     });
     expect(JSON.stringify(responses[0].message)).not.toContain('a'.repeat(64));
-    expect(responses[3].message.result).toMatchObject({
+    expect(responses[4].message.result).toMatchObject({
       totalCount: 2,
       isLiked: true
     });
@@ -1725,7 +1744,7 @@ describe('CSP-safe component and relay integration', function () {
     ).toBeNull();
   });
 
-  it('proxies httpGet through the background and rejects loopback URLs', async function () {
+  it('prepares only an action-bound Zap invoice in the isolated world', async function () {
     const listeners = new Map();
     const responses = [];
     const pageWindow = {
@@ -1740,35 +1759,87 @@ describe('CSP-safe component and relay integration', function () {
         responses.push(message);
       }
     };
+    const recipientSecret = new Uint8Array(32).fill(12);
+    const profile = finalizeEvent(
+      {
+        kind: 0,
+        created_at: 10,
+        tags: [],
+        content: JSON.stringify({ lud16: 'alice@ln.example' })
+      },
+      recipientSecret
+    );
+    const recipientNpub = nip19.npubEncode(profile.pubkey);
+    const contentUrl = 'https://x.com/alice/status/42';
+    const amount = BOLT11_20U_AMOUNT_MSATS;
+    const zapEvent = finalizeEvent(
+      {
+        kind: 9734,
+        created_at: 11,
+        content: '',
+        tags: [
+          ['p', profile.pubkey],
+          ['amount', String(amount)],
+          ['a', '39735:' + profile.pubkey + ':' + contentUrl],
+          ['relays', 'wss://relay.damus.io/']
+        ]
+      },
+      new Uint8Array(32).fill(13)
+    );
+    const backgroundRequests = [];
     globalThis.chrome = {
       runtime: {
         sendMessage(message, callback) {
-          callback({
-            ok: true,
-            result: { status: 200, json: { pr: 'lnbc1test' } }
-          });
+          backgroundRequests.push(message);
+          if (message.url.includes('/.well-known/lnurlp/')) {
+            callback({
+              ok: true,
+              result: {
+                status: 200,
+                json: {
+                  allowsNostr: true,
+                  callback: 'https://ln.example/callback',
+                  nostrPubkey: 'f'.repeat(64),
+                  minSendable: amount,
+                  maxSendable: amount,
+                  commentAllowed: 0
+                }
+              }
+            });
+          } else {
+            callback({
+              ok: true,
+              result: {
+                status: 200,
+                json: { pr: BOLT11_20U }
+              }
+            });
+          }
         }
       }
     };
+    const pool = {
+      subscribe(_relays, _filter, options) {
+        queueMicrotask(function () {
+          options.onevent(profile);
+          options.oneose();
+        });
+        return { close: vi.fn(async function () {}) };
+      },
+      destroy: vi.fn()
+    };
     const channel = 'd'.repeat(64);
     const session = extension.relayClient.configure(channel, {
-      pool: { destroy: vi.fn() },
+      pool: pool,
       window: pageWindow
     });
     const onMessage = listeners.get('message');
-
-    await onMessage({
-      source: pageWindow,
-      origin: 'https://x.com',
-      data: {
-        source: 'nostr-components-relay-main',
-        requestId: 'f'.repeat(32),
-        operation: 'httpGet',
-        payload: { url: 'https://ln.example/.well-known/lnurlp/alice' },
-        mac: '0'.repeat(64)
-      }
+    const actionId = 'e'.repeat(64);
+    extension.relayClient.registerActionContext(actionId, {
+      kind: 'x',
+      url: contentUrl,
+      recipientNpub: recipientNpub
     });
-    expect(responses).toEqual([]);
 
     await onMessage({
       source: pageWindow,
@@ -1776,8 +1847,14 @@ describe('CSP-safe component and relay integration', function () {
       data: await createAuthenticatedRelayRequest(
         channel,
         '0'.repeat(32),
-        'httpGet',
-        { url: 'https://ln.example/.well-known/lnurlp/alice' }
+        'fetchZapInvoice',
+        {
+          actionId: actionId,
+          relays: ['wss://relay.damus.io'],
+          amount: amount,
+          comment: '',
+          zapEvent: zapEvent
+        }
       )
     });
     await onMessage({
@@ -1787,26 +1864,29 @@ describe('CSP-safe component and relay integration', function () {
         channel,
         '1'.repeat(32),
         'httpGet',
-        { url: 'https://127.0.0.1/.well-known/lnurlp/alice' }
+        {
+          relays: ['wss://relay.damus.io'],
+          url: 'https://ln.example/private-proxy'
+        }
       )
     });
 
+    expect(responses[0].error).toBeUndefined();
     expect(responses[0].ok).toBe(true);
-    expect(responses[0].result).toEqual({ status: 200, json: { pr: 'lnbc1test' } });
+    expect(responses[0].result).toEqual({
+      invoice: BOLT11_20U,
+      provider: {
+        lnurl: 'https://ln.example/.well-known/lnurlp/alice',
+        callback: 'https://ln.example/callback',
+        nostrPubkey: 'f'.repeat(64)
+      }
+    });
     expect(responses[1].ok).toBe(false);
-    expect(
-      await extension.relayClient
-        .createBridgeAuthenticator(channel)
-        .verifyResponse(responses[0])
-    ).toBe(true);
-    expect(
-      await extension.relayClient
-        .createBridgeAuthenticator(channel)
-        .verifyResponse({
-          ...responses[0],
-          result: { status: 200, json: { pr: 'lnbc1attacker' } }
-        })
-    ).toBe(false);
+    expect(backgroundRequests).toHaveLength(2);
+    expect(backgroundRequests[1].url).toContain('amount=' + amount);
+    expect(backgroundRequests[1].url).toContain(
+      'nostr=' + encodeURIComponent(JSON.stringify(zapEvent))
+    );
     expect(extension.zapHttp.isAllowedZapHttpUrl('https://ln.example/.well-known/lnurlp/alice')).toBe(true);
     expect(extension.zapHttp.isAllowedZapHttpUrl('https://127.0.0.1/.well-known/lnurlp/alice')).toBe(false);
     expect(extension.zapHttp.isAllowedZapHttpUrl('https://192.168.1.9/.well-known/lnurlp/alice')).toBe(false);
@@ -1858,6 +1938,11 @@ describe('CSP-safe component and relay integration', function () {
     const session = extension.relayClient.configure(channel, {
       pool: pool,
       window: pageWindow
+    });
+    extension.relayClient.registerActionContext('8'.repeat(64), {
+      kind: 'youtube',
+      url: videoUrl,
+      recipientNpub: null
     });
 
     await listeners.get('message')({
@@ -2178,7 +2263,11 @@ describe('timeline component integration', function () {
     extension.directory.lookup = async function () {
       throw new Error('directory unavailable');
     };
-    extension.componentLoader = { ready: Promise.resolve() };
+    const revokeAction = vi.fn();
+    extension.componentLoader = {
+      ready: Promise.resolve(),
+      revokeAction: revokeAction
+    };
     vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     try {
@@ -2211,6 +2300,23 @@ describe('timeline component integration', function () {
         { attributes: true, attributeFilter: ['class', 'style', 'dark'] },
         { attributes: true, attributeFilter: ['class', 'style', 'dark'] }
       ]);
+
+      slot.isConnected = false;
+      observerCallbacks[0]([
+        {
+          removedNodes: [
+            {
+              matches() {
+                return false;
+              },
+              querySelectorAll() {
+                return [slot];
+              }
+            }
+          ]
+        }
+      ]);
+      expect(revokeAction).toHaveBeenCalledWith(slot);
     } finally {
       extension.directory.lookup = originalDirectoryLookup;
     }
