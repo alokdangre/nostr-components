@@ -10,6 +10,10 @@ import {
   getZapProviderInfo,
   listenForZapReceipt,
 } from '../zap-utils';
+import {
+  BOLT11_20U,
+  BOLT11_20U_AMOUNT_MSATS,
+} from './fixtures';
 
 const RELAYS = ['wss://relay.damus.io'];
 
@@ -173,7 +177,7 @@ describe('Zap component relay transport', () => {
   it('fetches invoices through host httpGet', async () => {
     const httpGet = vi.fn().mockResolvedValue({
       status: 200,
-      json: { pr: 'lnbc1invoice' },
+      json: { pr: BOLT11_20U },
     });
     Object.assign(globalThis, {
       __nostrComponentsRelayTransport: {
@@ -186,16 +190,64 @@ describe('Zap component relay transport', () => {
     await expect(
       fetchInvoice({
         zapEndpoint: 'https://ln.example/callback',
-        amount: 21000,
+        amount: BOLT11_20U_AMOUNT_MSATS,
         authorId: '44'.repeat(32),
         normalizedRelays: RELAYS,
         anon: true,
       }),
-    ).resolves.toBe('lnbc1invoice');
+    ).resolves.toBe(BOLT11_20U);
     expect(httpGet).toHaveBeenCalledTimes(1);
     expect(String(httpGet.mock.calls[0][0])).toContain(
-      'https://ln.example/callback?amount=21000&nostr=',
+      `https://ln.example/callback?amount=${BOLT11_20U_AMOUNT_MSATS}&nostr=`,
     );
+  });
+
+  it('rejects an invoice for a different amount', async () => {
+    const httpGet = vi.fn().mockResolvedValue({
+      status: 200,
+      json: { pr: BOLT11_20U },
+    });
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: {
+        query: vi.fn(),
+        publish: vi.fn(),
+        httpGet,
+      },
+    });
+
+    await expect(
+      fetchInvoice({
+        zapEndpoint: 'https://ln.example/callback',
+        amount: 21_000,
+        authorId: '45'.repeat(32),
+        normalizedRelays: RELAYS,
+        anon: true,
+      }),
+    ).rejects.toThrow('LNURL invoice amount does not match requested amount');
+  });
+
+  it('rejects a malformed invoice from the LNURL endpoint', async () => {
+    const httpGet = vi.fn().mockResolvedValue({
+      status: 200,
+      json: { pr: 'lnbc1not-an-invoice' },
+    });
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: {
+        query: vi.fn(),
+        publish: vi.fn(),
+        httpGet,
+      },
+    });
+
+    await expect(
+      fetchInvoice({
+        zapEndpoint: 'https://ln.example/callback',
+        amount: 21_000,
+        authorId: '46'.repeat(32),
+        normalizedRelays: RELAYS,
+        anon: true,
+      }),
+    ).rejects.toThrow('LNURL endpoint returned an invalid invoice');
   });
 
   it('polls for a zap receipt through the host transport and stops on cleanup', async () => {

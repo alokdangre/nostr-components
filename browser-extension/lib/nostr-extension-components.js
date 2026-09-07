@@ -19942,7 +19942,16 @@
           throw new Error("Invalid JSON from LNURL endpoint");
         }
         const { pr: invoice, reason, status: lnurlStatus } = json || {};
-        if (invoice) return invoice;
+        if (typeof invoice === "string" && invoice.length > 0) {
+          const invoiceAmount = getBolt11AmountMsats(invoice);
+          if (invoiceAmount == null) {
+            throw new Error("LNURL endpoint returned an invalid invoice");
+          }
+          if (invoiceAmount !== amount) {
+            throw new Error("LNURL invoice amount does not match requested amount");
+          }
+          return invoice;
+        }
         if (lnurlStatus === "ERROR") throw new Error(reason ?? "Unable to fetch invoice");
         throw new Error("Unable to fetch invoice");
       };
@@ -26594,7 +26603,8 @@ ${url}`;
     let customComment = "";
     let currentInvoice = "";
     let cleanupReceipt = null;
-    async function loadInvoice(amountSats, comment) {
+    let invoiceRequestSeq = 0;
+    async function loadInvoice(amountSats, comment, requestSeq) {
       const authorId = npubHex;
       const relaysArray = relays.split(",").map((r) => r.trim()).filter(Boolean);
       const meta = await getProfileMetadata(authorId, relaysArray);
@@ -26615,6 +26625,7 @@ ${url}`;
         anon: params.anon ?? false,
         url
       });
+      if (requestSeq !== invoiceRequestSeq) return null;
       currentInvoice = invoice;
       if (cleanupReceipt) cleanupReceipt();
       cleanupReceipt = listenForZapReceipt({
@@ -26624,6 +26635,7 @@ ${url}`;
         provider,
         onSuccess: markSuccess
       });
+      return invoice;
     }
     async function qrImgSrc(invoice) {
       if (!invoice || invoice.trim().length === 0) {
@@ -26664,23 +26676,37 @@ ${url}`;
       });
     }
     async function refreshUI(dialog2) {
+      const requestSeq = ++invoiceRequestSeq;
+      currentInvoice = "";
+      if (cleanupReceipt) {
+        cleanupReceipt();
+        cleanupReceipt = null;
+      }
+      const activePayBtn = dialog2.querySelector(".cta-btn");
+      if (activePayBtn) activePayBtn.disabled = true;
       dialog2.classList.add("loading");
       try {
-        await loadInvoice(selectedAmount, customComment);
+        const invoice = await loadInvoice(
+          selectedAmount,
+          customComment,
+          requestSeq
+        );
+        if (!invoice || requestSeq !== invoiceRequestSeq) return;
         const dialogContent = dialog2.querySelector(".dialog-content");
         const qrImg = (dialogContent || dialog2).querySelector("img.qr");
         if (!qrImg) {
           console.error("QR image element not found in dialog");
           return;
         }
-        if (!currentInvoice || currentInvoice.trim().length === 0) {
+        if (invoice.trim().length === 0) {
           console.error("Invoice is empty, cannot generate QR code");
           qrImg.alt = "No invoice available";
           qrImg.style.display = "none";
           return;
         }
         try {
-          const src = await qrImgSrc(currentInvoice);
+          const src = await qrImgSrc(invoice);
+          if (requestSeq !== invoiceRequestSeq) return;
           qrImg.src = src;
           qrImg.style.display = "block";
           qrImg.onerror = () => {
@@ -26698,6 +26724,7 @@ ${url}`;
           payBtn.disabled = false;
         }
       } catch (error) {
+        if (requestSeq !== invoiceRequestSeq) return;
         console.error("Failed to load invoice:", error);
         const dialogContent = dialog2.querySelector(".dialog-content");
         if (dialogContent) {
@@ -26727,7 +26754,9 @@ ${url}`;
           payBtn.disabled = true;
         }
       } finally {
-        dialog2.classList.remove("loading");
+        if (requestSeq === invoiceRequestSeq) {
+          dialog2.classList.remove("loading");
+        }
       }
     }
     injectCSS(params.theme || "light");
@@ -26846,7 +26875,12 @@ ${url}`;
       });
     }
     dialog.addEventListener("close", () => {
-      if (cleanupReceipt) cleanupReceipt();
+      invoiceRequestSeq += 1;
+      currentInvoice = "";
+      if (cleanupReceipt) {
+        cleanupReceipt();
+        cleanupReceipt = null;
+      }
     });
     if (buttonColor) {
       const btnColor = buttonColor;

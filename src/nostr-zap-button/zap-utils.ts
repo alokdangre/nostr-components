@@ -14,6 +14,7 @@ import { DEFAULT_RELAYS } from '../common/constants';
 import { getRelayTransport, httpGetJson } from '../common/relay-transport';
 import { cloneVerifiedEvent } from '../common/nostr-event';
 import {
+  getBolt11AmountMsats,
   resolveZapProviderInfo,
   validateZapReceipt,
   type ZapProviderInfo,
@@ -337,7 +338,16 @@ export const fetchInvoice = async ({
     throw new Error('Invalid JSON from LNURL endpoint');
   }
   const { pr: invoice, reason, status: lnurlStatus } = json || {};
-  if (invoice) return invoice;
+  if (typeof invoice === 'string' && invoice.length > 0) {
+    const invoiceAmount = getBolt11AmountMsats(invoice);
+    if (invoiceAmount == null) {
+      throw new Error('LNURL endpoint returned an invalid invoice');
+    }
+    if (invoiceAmount !== amount) {
+      throw new Error('LNURL invoice amount does not match requested amount');
+    }
+    return invoice;
+  }
   if (lnurlStatus === 'ERROR') throw new Error(reason ?? 'Unable to fetch invoice');
   throw new Error('Unable to fetch invoice');
 };

@@ -117,12 +117,17 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
   let customComment = '';
   let currentInvoice = '';
   let cleanupReceipt: (() => void) | null = null;
+  let invoiceRequestSeq = 0;
 
   // -----------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
 
-  async function loadInvoice(amountSats: number, comment: string) {
+  async function loadInvoice(
+    amountSats: number,
+    comment: string,
+    requestSeq: number,
+  ): Promise<string | null> {
     const authorId = npubHex;
     const relaysArray = relays.split(',').map(r => r.trim()).filter(Boolean);
     const meta = await getProfileMetadata(authorId, relaysArray);
@@ -145,6 +150,7 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
       anon: params.anon ?? false,
       url: url,
     });
+    if (requestSeq !== invoiceRequestSeq) return null;
     currentInvoice = invoice;
 
     // Zap receipt listener
@@ -157,6 +163,7 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
       provider,
       onSuccess: markSuccess
     });
+    return invoice;
   }
 
   async function qrImgSrc(invoice: string): Promise<string> {
@@ -205,9 +212,22 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
   }
 
   async function refreshUI(dialog: HTMLDialogElement) {
+    const requestSeq = ++invoiceRequestSeq;
+    currentInvoice = '';
+    if (cleanupReceipt) {
+      cleanupReceipt();
+      cleanupReceipt = null;
+    }
+    const activePayBtn = dialog.querySelector('.cta-btn') as HTMLButtonElement | null;
+    if (activePayBtn) activePayBtn.disabled = true;
     dialog.classList.add('loading');
     try {
-      await loadInvoice(selectedAmount, customComment);
+      const invoice = await loadInvoice(
+        selectedAmount,
+        customComment,
+        requestSeq,
+      );
+      if (!invoice || requestSeq !== invoiceRequestSeq) return;
       
       // Try to find QR image in dialog content (more specific selector)
       const dialogContent = dialog.querySelector('.dialog-content') as HTMLElement;
@@ -218,7 +238,7 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
         return;
       }
       
-      if (!currentInvoice || currentInvoice.trim().length === 0) {
+      if (invoice.trim().length === 0) {
         console.error('Invoice is empty, cannot generate QR code');
         qrImg.alt = 'No invoice available';
         qrImg.style.display = 'none';
@@ -226,7 +246,8 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
       }
       
       try {
-        const src = await qrImgSrc(currentInvoice);
+        const src = await qrImgSrc(invoice);
+        if (requestSeq !== invoiceRequestSeq) return;
         qrImg.src = src;
         qrImg.style.display = 'block';
         qrImg.onerror = () => {
@@ -245,6 +266,7 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
         payBtn.disabled = false;
       }
     } catch (error: any) {
+      if (requestSeq !== invoiceRequestSeq) return;
       console.error('Failed to load invoice:', error);
       // Show error message in dialog
       const dialogContent = dialog.querySelector('.dialog-content') as HTMLElement;
@@ -277,7 +299,9 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
         payBtn.disabled = true;
       }
     } finally {
-      dialog.classList.remove('loading');
+      if (requestSeq === invoiceRequestSeq) {
+        dialog.classList.remove('loading');
+      }
     }
   }
 
@@ -436,7 +460,12 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
   }
 
   dialog.addEventListener('close', () => {
-    if (cleanupReceipt) cleanupReceipt();
+    invoiceRequestSeq += 1;
+    currentInvoice = '';
+    if (cleanupReceipt) {
+      cleanupReceipt();
+      cleanupReceipt = null;
+    }
   });
 
   // Color customisation (buttonColor background)
