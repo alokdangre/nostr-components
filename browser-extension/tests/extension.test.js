@@ -1307,6 +1307,51 @@ describe('CSP-safe component and relay integration', function () {
     );
   });
 
+  it('budgets for the bounded relay and HTTPS work in Zap requests', async function () {
+    const scheduledDelays = [];
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(function (
+      _callback,
+      delay
+    ) {
+      scheduledDelays.push(delay);
+      return scheduledDelays.length;
+    });
+    let resolvePosted;
+    let posted = new Promise(function (resolve) {
+      resolvePosted = resolve;
+    });
+    const pageWindow = {
+      location: { origin: 'https://x.com' },
+      addEventListener() {},
+      postMessage() {
+        resolvePosted();
+      }
+    };
+    const transport = createMainRelayTransport('9'.repeat(64), {
+      crypto: globalThis.crypto,
+      pageWindow,
+      structuredClone: globalThis.structuredClone
+    });
+
+    void transport.getZapProvider('a'.repeat(64), [
+      'wss://relay.damus.io'
+    ]);
+    await posted;
+
+    posted = new Promise(function (resolve) {
+      resolvePosted = resolve;
+    });
+    void transport.fetchZapInvoice('a'.repeat(64), {
+      relays: ['wss://relay.damus.io'],
+      amount: 21_000,
+      comment: '',
+      zapEvent: {}
+    });
+    await posted;
+
+    expect(scheduledDelays).toEqual([15_000, 25_000]);
+  });
+
   it('accepts the document-start bootstrap once without exposing channels', async function () {
     const listeners = new Map();
     const removed = [];

@@ -28720,7 +28720,7 @@ ${url}`;
             pendingDelete(requestId);
             reject(new ErrorConstructor("Relay request timed out"));
           },
-          operation === "publish" || operation === "getZapProvider" || operation === "fetchZapInvoice" ? 12e3 : 4e3
+          operation === "fetchZapInvoice" ? 25e3 : operation === "getZapProvider" ? 15e3 : operation === "publish" ? 12e3 : 4e3
         );
         pendingSet(requestId, {
           operation,

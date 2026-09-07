@@ -322,11 +322,13 @@ export function createMainRelayTransport(
           pendingDelete(requestId);
           reject(new ErrorConstructor('Relay request timed out'));
         },
-        operation === 'publish' ||
-        operation === 'getZapProvider' ||
         operation === 'fetchZapInvoice'
-          ? 12_000
-          : 4_000,
+          ? 25_000
+          : operation === 'getZapProvider'
+            ? 15_000
+            : operation === 'publish'
+              ? 12_000
+              : 4_000,
       );
       pendingSet(requestId, {
         operation,
