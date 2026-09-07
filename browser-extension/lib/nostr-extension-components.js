@@ -19696,6 +19696,22 @@
     listenForZapReceipt: () => listenForZapReceipt,
     resolveNip05: () => resolveNip05
   });
+  function cacheVerifiedProfiles(events, requestedIds, relayList) {
+    for (const event of events) {
+      const candidate = event;
+      const verifiedEvent = getVerifiedProfileEvent(
+        candidate,
+        candidate?.pubkey || ""
+      );
+      if (!verifiedEvent) continue;
+      if (!requestedIds.has(verifiedEvent.pubkey.toLowerCase())) continue;
+      const cacheKey = profileCacheKey(verifiedEvent.pubkey, relayList);
+      const cached = profileCache.get(cacheKey);
+      if (!cached || verifiedEvent.created_at > cached.created_at || verifiedEvent.created_at === cached.created_at && verifiedEvent.id > cached.id) {
+        profileCache.set(cacheKey, verifiedEvent);
+      }
+    }
+  }
   async function resolveNip05(nip05Identifier) {
     try {
       const profile = await nip05_exports.queryProfile(nip05Identifier);
@@ -19705,7 +19721,7 @@
       return null;
     }
   }
-  var profileCache, ZAP_PROVIDER_CACHE_TTL_MS, ZAP_PROVIDER_NEGATIVE_TTL_MS, ZAP_RECEIPT_POLL_TIMEOUT_MS, zapProviderCache, profileCacheKey, getVerifiedProfileEvent, getProfileMetadata, getBatchedProfileMetadata, extractProfileMetadataContent, getZapEndpoint2, getZapProviderInfo, buildUrlATag, signEvent2, makeZapEvent, fetchInvoice, generateRandomPrivKey, isNip07ExtAvailable, fetchTotalZapAmount, listenForZapReceipt;
+  var profileCache, ZAP_PROVIDER_CACHE_TTL_MS, ZAP_PROVIDER_NEGATIVE_TTL_MS, ZAP_RECEIPT_POLL_TIMEOUT_MS, zapProviderCache, profileCacheKey, getVerifiedProfileEvent, getProfileMetadata, PROFILE_QUERY_BATCH_SIZE, getBatchedProfileMetadata, extractProfileMetadataContent, getZapEndpoint2, getZapProviderInfo, buildUrlATag, signEvent2, makeZapEvent, fetchInvoice, generateRandomPrivKey, isNip07ExtAvailable, fetchTotalZapAmount, listenForZapReceipt;
   var init_zap_utils = __esm({
     "src/nostr-zap-button/zap-utils.ts"() {
       "use strict";
@@ -19775,6 +19791,7 @@
           pool.close(relayList);
         }
       };
+      PROFILE_QUERY_BATCH_SIZE = 50;
       getBatchedProfileMetadata = async (authorIds, relays) => {
         const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
         const uncachedIds = Array.from(
@@ -19791,50 +19808,25 @@
           }));
         }
         const transport2 = getRelayTransport();
-        if (transport2) {
-          const events = await transport2.query(relayList, {
-            authors: uncachedIds.slice(0, 50),
-            kinds: [0],
-            limit: Math.min(uncachedIds.length, 50)
-          });
-          events.forEach((event) => {
-            const verifiedEvent = getVerifiedProfileEvent(event, event?.pubkey || "");
-            if (!verifiedEvent) return;
-            if (!uncachedIds.includes(verifiedEvent.pubkey.toLowerCase())) return;
-            const cacheKey = profileCacheKey(verifiedEvent.pubkey, relayList);
-            const cached = profileCache.get(cacheKey);
-            if (!cached || verifiedEvent.created_at > cached.created_at) {
-              profileCache.set(cacheKey, verifiedEvent);
-            }
-          });
+        const pool = transport2 ? null : new SimplePool();
+        const requestedIds = new Set(uncachedIds);
+        try {
+          for (let offset = 0; offset < uncachedIds.length; offset += PROFILE_QUERY_BATCH_SIZE) {
+            const batch = uncachedIds.slice(offset, offset + PROFILE_QUERY_BATCH_SIZE);
+            const filter = {
+              authors: batch,
+              kinds: [0],
+              limit: batch.length
+            };
+            const events = transport2 ? await transport2.query(relayList, filter) : await pool.querySync(relayList, filter);
+            cacheVerifiedProfiles(events, requestedIds, relayList);
+          }
           return authorIds.map((id) => ({
             id,
             profile: profileCache.get(profileCacheKey(id, relayList)) || null
           }));
-        }
-        const pool = new SimplePool();
-        try {
-          const events = await pool.querySync(relayList, {
-            authors: uncachedIds,
-            kinds: [0],
-            limit: Math.min(uncachedIds.length, 50)
-          });
-          events.forEach((event) => {
-            const verifiedEvent = getVerifiedProfileEvent(event, event?.pubkey || "");
-            if (!verifiedEvent) return;
-            if (!uncachedIds.includes(verifiedEvent.pubkey.toLowerCase())) return;
-            profileCache.set(
-              profileCacheKey(verifiedEvent.pubkey, relayList),
-              verifiedEvent
-            );
-          });
-          const allProfiles = authorIds.map((id) => ({
-            id,
-            profile: profileCache.get(profileCacheKey(id, relayList)) || null
-          }));
-          return allProfiles;
         } finally {
-          pool.close(relayList);
+          pool?.close(relayList);
         }
       };
       extractProfileMetadataContent = (profileMetadata) => {

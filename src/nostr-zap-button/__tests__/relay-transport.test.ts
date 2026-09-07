@@ -144,6 +144,36 @@ describe('Zap component relay transport', () => {
     });
   });
 
+  it('queries every unique author in batches of fifty', async () => {
+    const profiles = Array.from({ length: 51 }, (_value, index) =>
+      makeProfileEvent(index + 30, { name: `Profile ${index}` }),
+    );
+    const pubkeys = profiles.map(profile => profile.pubkey);
+    const query = vi.fn(
+      async (_relays: string[], filter: { authors: string[] }) =>
+        profiles.filter(profile => filter.authors.includes(profile.pubkey)),
+    );
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: { query, publish: vi.fn() },
+    });
+    const relays = ['wss://profile-pagination.example'];
+
+    const results = await getBatchedProfileMetadata(
+      [...pubkeys, pubkeys[50].toUpperCase()],
+      relays,
+    );
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls.map(call => call[1].authors.length)).toEqual([
+      50,
+      1,
+    ]);
+    expect(query.mock.calls.flatMap(call => call[1].authors)).toEqual(pubkeys);
+    expect(results).toHaveLength(52);
+    expect(results.every(result => result.profile !== null)).toBe(true);
+    expect(results[51].profile?.pubkey).toBe(pubkeys[50]);
+  });
+
   it('resolves LNURL metadata through host httpGet', async () => {
     const httpGet = vi.fn().mockResolvedValue({
       status: 200,
