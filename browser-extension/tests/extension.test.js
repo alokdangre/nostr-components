@@ -2374,7 +2374,9 @@ describe('timeline component integration', function () {
         { attributes: true, attributeFilter: ['class', 'style', 'dark'] }
       ]);
 
-      slot.isConnected = false;
+      // Reparenting before MutationObserver delivery must not preserve the old
+      // capability. A legitimate insertion will register a fresh action ID.
+      slot.isConnected = true;
       observerCallbacks[0]([
         {
           removedNodes: [

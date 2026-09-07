@@ -188,7 +188,6 @@
       }
     }
     for (const action of removedActions) {
-      if (action.isConnected) continue;
       hydrationObserver?.unobserve(action);
       extension.componentLoader?.revokeAction?.(action);
     }
