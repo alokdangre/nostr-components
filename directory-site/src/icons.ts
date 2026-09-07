@@ -8,10 +8,6 @@ export const icon = {
       <path d="m6.5 10.1 2.1 2.2 5-5" />
       <path d="M10 2.7 16 5v4.3c0 3.8-2.4 6.5-6 8-3.6-1.5-6-4.2-6-8V5l6-2.3Z" />
     </svg>`,
-  chevron: () => `
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
-      <path d="m6 8 4 4 4-4" />
-    </svg>`,
   close: () => `
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
       <path d="m6 6 12 12M18 6 6 18" />
@@ -21,18 +17,9 @@ export const icon = {
       <rect x="6.5" y="6.5" width="9" height="9" rx="1.5" />
       <path d="M13.5 6.5V5A1.5 1.5 0 0 0 12 3.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5" />
     </svg>`,
-  database: () => `
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
-      <ellipse cx="12" cy="5" rx="7.5" ry="3" />
-      <path d="M4.5 5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V5M4.5 11v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6" />
-    </svg>`,
   external: () => `
     <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
       <path d="M11 4h5v5M9 11l7-7M15 11v4.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5H9" />
-    </svg>`,
-  menu: () => `
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
-      <path d="M4 7h16M4 12h16M4 17h16" />
     </svg>`,
   plusUser: () => `
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
@@ -55,7 +42,7 @@ export function brandMark(): string {
 
 export function networkGraphic(): string {
   return `
-    <svg class="network-graphic" aria-label="A connected open social network" viewBox="0 0 620 310" fill="none" role="img">
+    <svg class="network-graphic" aria-label="A network connecting creator accounts to Nostr" viewBox="0 0 620 310" fill="none" role="img">
       <g class="network-lines">
         <path d="M48 124 145 58l90 49 93-64 86 62 111-45" />
         <path d="m48 124 71 80 116-97 80 95 99-97 111 72" />

@@ -5,12 +5,7 @@ import {
   type DirectoryCategory,
   type DirectoryProfile,
 } from "./data";
-import {
-  formatFollowers,
-  getVisibleProfiles,
-  truncateNpub,
-  type DirectorySort,
-} from "./directory";
+import { formatFollowers, getVisibleProfiles, truncateNpub } from "./directory";
 import { brandMark, icon, networkGraphic } from "./icons";
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
@@ -20,10 +15,8 @@ if (!appRoot) throw new Error("Nostr Atlas app root was not found.");
 const app = appRoot;
 
 let profiles: DirectoryProfile[] = [...directoryProfiles];
-let category: DirectoryCategory = "Trending";
+let category: DirectoryCategory = "Popular on X.com";
 let query = "";
-let sort: DirectorySort = "followers";
-let verifiedOnly = true;
 
 const escapeHtml = (value: string): string =>
   value.replace(
@@ -55,21 +48,21 @@ function profileRow(profile: DirectoryProfile): string {
         <span class="profile-name-wrap">
           <span class="profile-name-line">
             <strong>${safeName}</strong>
-            ${profile.verified ? `<span class="verified-mark" title="Verified identity">${icon.check()}<span class="sr-only">Verified identity</span></span>` : ""}
+            ${profile.verified ? `<span class="verified-mark" title="Nostr identity verified">${icon.check()}<span class="sr-only">Nostr identity verified</span></span>` : ""}
           </span>
           <span class="profile-handle">${safeHandle}</span>
         </span>
       </div>
       <a class="nip05-link" href="https://${safeNip05.includes("@") ? safeNip05.split("@")[1] : safeNip05}" target="_blank" rel="noreferrer">${safeNip05}</a>
-      <span class="profile-category">${profile.category.slice(0, -1)}</span>
-      <span class="followers"><strong>${formatFollowers(profile.followers)}</strong><span class="mobile-only"> followers</span></span>
-      <span class="verified-cell">${profile.verified ? icon.check() : "—"}<span class="sr-only">${profile.verified ? "Verified" : "Not verified"}</span></span>
-      <button class="npub-copy" type="button" data-copy-npub="${safeNpub}" aria-label="Copy public key for ${safeName}">
+      <button class="npub-copy" type="button" data-copy-npub="${safeNpub}" aria-label="Copy Nostr public key for ${safeName}">
         <span>${truncateNpub(profile.npub)}</span>
         ${icon.copy()}
       </button>
+      <span class="followers"><strong>${formatFollowers(profile.followers)}</strong><span class="mobile-only"> audience</span></span>
+      <span class="verified-cell">${profile.verified ? icon.check() : "—"}<span class="sr-only">${profile.verified ? "Nostr identity verified" : "Nostr identity not verified"}</span></span>
+      <span class="youtube-cell">${profile.youtube ? escapeHtml(profile.youtube) : "—"}</span>
       <a class="profile-link" href="https://njump.me/${safeNpub}" target="_blank" rel="noreferrer">
-        <span>View profile</span>${icon.external()}
+        <span>Open Nostr profile</span>${icon.external()}
       </a>
     </article>`;
 }
@@ -82,18 +75,16 @@ function renderProfiles(): void {
   const visibleProfiles = getVisibleProfiles(profiles, {
     category,
     query,
-    sort,
-    verifiedOnly,
   });
 
-  resultCount.textContent = `${visibleProfiles.length} ${visibleProfiles.length === 1 ? "identity" : "identities"}`;
+  resultCount.textContent = `${visibleProfiles.length} ${visibleProfiles.length === 1 ? "creator claim" : "creator claims"}`;
   results.innerHTML = visibleProfiles.length
     ? visibleProfiles.map(profileRow).join("")
     : `
       <div class="empty-state">
         <span>${icon.search()}</span>
-        <h3>No identities found</h3>
-        <p>Try another name, handle, NIP-05 address, or category.</p>
+        <h3>No creator claims found</h3>
+        <p>Try an X handle, YouTube channel, NIP-05 address, or npub.</p>
         <button class="text-button" type="button" id="clear-filters">Clear search and filters</button>
       </div>`;
 }
@@ -105,68 +96,33 @@ function renderApp(): void {
         <a class="brand" href="#top" aria-label="Nostr Atlas home">
           ${brandMark()}<span>Nostr Atlas</span>
         </a>
-        <nav class="desktop-nav" aria-label="Primary navigation">
-          <a class="active" href="#directory">Directory</a>
-          <a href="#how-it-works">How it works</a>
-          <a href="#about">About</a>
-        </nav>
-        <button class="primary-button desktop-add-profile" type="button" data-open-profile-dialog>
-          ${icon.plusUser()}<span>Add your profile</span>
-        </button>
-        <button class="icon-button mobile-menu-button" type="button" aria-expanded="false" aria-controls="mobile-nav" aria-label="Open navigation">
-          ${icon.menu()}
-        </button>
       </div>
-      <nav class="mobile-nav" id="mobile-nav" aria-label="Mobile navigation" hidden>
-        <a href="#directory">Directory</a>
-        <a href="#how-it-works">How it works</a>
-        <a href="#about">About</a>
-        <button class="primary-button" type="button" data-open-profile-dialog>${icon.plusUser()} Add your profile</button>
-      </nav>
     </header>
 
     <main id="top">
       <section class="hero shell" aria-labelledby="hero-heading">
         <div class="hero-copy">
-          <h1 id="hero-heading">Find your people on Nostr.</h1>
-          <p>Search verified identities, creators, builders, and communities across the open social web.</p>
+          <h1 id="hero-heading">Receive zaps on X.com and YouTube.</h1>
+          <p>Claim the accounts people already know, connect them to your Nostr identity, and give supporters a clear path to zap you across the web.</p>
+          <button class="primary-button hero-cta" type="button" data-open-profile-dialog>
+            ${icon.plusUser()}<span>Claim your X or YouTube account</span>
+          </button>
           <form class="hero-search" id="hero-search" role="search">
-            <label class="sr-only" for="directory-search">Search the Nostr directory</label>
+            <label class="sr-only" for="directory-search">Search creator claims</label>
             ${icon.search()}
-            <input id="directory-search" type="search" autocomplete="off" placeholder="Search name, handle, NIP-05, or npub" />
-            <button type="submit" aria-label="Search directory">${icon.arrow()}</button>
+            <input id="directory-search" type="search" autocomplete="off" placeholder="Search X, YouTube, NIP-05, or npub" />
+            <button type="submit" aria-label="Search creator claims">${icon.arrow()}</button>
           </form>
-          <div class="proof-line" aria-label="Directory status">
-            <span>${icon.check()} <strong><span id="profile-count">${profiles.length}</span> sample identities</strong></span>
-            <i aria-hidden="true"></i>
-            <span>${icon.database()} Local demo · ready for public Nostr records</span>
-          </div>
         </div>
         <div class="hero-network">${networkGraphic()}</div>
       </section>
 
-      <section class="directory shell" id="directory" aria-labelledby="directory-heading">
+      <section class="directory shell" id="directory" aria-label="Creator claims">
         <div class="directory-heading-row">
-          <div>
-            <h2 id="directory-heading">Explore the network</h2>
-            <p id="result-count" aria-live="polite"></p>
-          </div>
-          <div class="directory-controls">
-            <button class="filter-button selected" id="verified-filter" type="button" aria-pressed="true">
-              ${icon.check()}<span>Verified only</span>
-            </button>
-            <label class="sort-control">
-              <span class="sr-only">Sort directory</span>
-              <select id="sort-directory">
-                <option value="followers">Most followed</option>
-                <option value="name">Name A–Z</option>
-              </select>
-              ${icon.chevron()}
-            </label>
-          </div>
+          <p id="result-count" aria-live="polite"></p>
         </div>
 
-        <div class="tabs" role="tablist" aria-label="Directory categories">
+        <div class="tabs" role="tablist" aria-label="Creator claim categories">
           ${categories
             .map(
               (item) => `
@@ -181,9 +137,9 @@ function renderApp(): void {
             .join("")}
         </div>
 
-        <div class="profile-table" role="region" aria-label="Nostr identity directory" tabindex="0">
+        <div class="profile-table" role="region" aria-label="Creator claim directory" tabindex="0">
           <div class="table-header" aria-hidden="true">
-            <span>Profile</span><span>NIP-05</span><span>Category</span><span>Followers</span><span>Verified</span><span>npub (click to copy)</span><span></span>
+            <span>Creator</span><span>Nostr address</span><span>npub (click to copy)</span><span>Audience</span><span>Nostr verified</span><span>YouTube channel</span><span></span>
           </div>
           <div id="profile-results"></div>
         </div>
@@ -191,11 +147,11 @@ function renderApp(): void {
 
       <section class="how-it-works" id="how-it-works" aria-labelledby="steps-heading">
         <div class="shell steps-layout">
-          <h2 id="steps-heading">From familiar handle<br />to open identity</h2>
+          <h2 id="steps-heading">From X or YouTube<br />to Nostr zaps</h2>
           <ol class="steps-list">
-            <li><span class="step-number">1</span><span><strong>Search</strong><small>Find people and communities you already know.</small></span></li>
-            <li><span class="step-number">2</span><span><strong>Verify</strong><small>Confirm identity through public records and proofs.</small></span></li>
-            <li><span class="step-number">3</span><span><strong>Follow</strong><small>Copy an npub and connect on the open social web.</small></span></li>
+            <li><span class="step-number">1</span><span><strong>Claim</strong><small>Start with the X or YouTube account your audience already recognizes.</small></span></li>
+            <li><span class="step-number">2</span><span><strong>Connect</strong><small>Associate it with your Nostr public key and NIP-05 address.</small></span></li>
+            <li><span class="step-number">3</span><span><strong>Receive zaps</strong><small>Supporters with <a href="https://github.com/saiy2k/nostr-components/tree/main/browser-extension" target="_blank" rel="noreferrer">our extension</a> installed can zap you on X.com and YouTube.</small></span></li>
           </ol>
         </div>
       </section>
@@ -203,11 +159,10 @@ function renderApp(): void {
 
     <footer class="site-footer" id="about">
       <div class="shell footer-inner">
-        <div class="footer-brand">${brandMark()}<strong>Nostr Atlas</strong><i aria-hidden="true"></i><span>Built for the open social web.</span></div>
+        <div class="footer-brand">${brandMark()}<strong>Nostr Atlas</strong><i aria-hidden="true"></i><span>Built to help creators receive zaps on X.com and YouTube.</span></div>
         <nav aria-label="Footer navigation">
-          <a href="https://github.com/nostr-protocol/nostr" target="_blank" rel="noreferrer">Protocol</a>
+          <a href="https://github.com/nostr-protocol/nostr" target="_blank" rel="noreferrer">About Nostr</a>
           <a href="https://github.com/saiy2k/nostr-components" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="#privacy">Privacy</a>
         </nav>
       </div>
     </footer>
@@ -215,19 +170,19 @@ function renderApp(): void {
     <dialog class="profile-dialog" id="profile-dialog" aria-labelledby="profile-dialog-title">
       <form method="dialog" class="dialog-card" id="add-profile-form">
         <div class="dialog-heading">
-          <div><h2 id="profile-dialog-title">Add your profile</h2><p>Preview a public Nostr identity in this local directory.</p></div>
-          <button class="icon-button" value="cancel" type="submit" aria-label="Close dialog">${icon.close()}</button>
+          <div><h2 id="profile-dialog-title">Preview a creator claim</h2><p>See how an X or YouTube account could appear with your Nostr identity. This stays in your browser.</p></div>
+          <button class="icon-button" value="cancel" type="submit" aria-label="Close claim preview">${icon.close()}</button>
         </div>
         <div class="form-grid">
-          <label>Display name<input name="name" required maxlength="50" placeholder="Satoshi" /></label>
-          <label>Handle<input name="handle" required maxlength="50" placeholder="@satoshi" /></label>
-          <label>NIP-05 address<input name="nip05" required maxlength="100" placeholder="satoshi@example.com" /></label>
-          <label>Category<select name="category"><option>Creators</option><option>Builders</option><option>Communities</option></select></label>
-          <label class="full-field">Public key<input name="npub" required minlength="20" pattern="npub1.+" placeholder="npub1…" /><small>Public keys must begin with npub1.</small></label>
+          <label>Creator name<input name="name" required maxlength="50" placeholder="Satoshi" /></label>
+          <label>X or YouTube handle<input name="handle" required maxlength="50" placeholder="@satoshi" /></label>
+          <label>Nostr address (NIP-05)<input name="nip05" required maxlength="100" placeholder="satoshi@example.com" /></label>
+          <label>Claim tab<select name="category"><option>Popular on X.com</option><option>Popular on Nostr</option></select></label>
+          <label class="full-field">Nostr public key<input name="npub" required minlength="20" pattern="npub1.+" placeholder="npub1…" /><small>Nostr public keys begin with npub1.</small></label>
         </div>
         <div class="dialog-actions">
           <button class="secondary-button" value="cancel" type="submit">Cancel</button>
-          <button class="primary-button" value="default" type="submit">Add to preview</button>
+          <button class="primary-button" value="default" type="submit">Add claim to preview</button>
         </div>
       </form>
     </dialog>
@@ -241,14 +196,6 @@ function bindEvents(): void {
   const searchForm = document.querySelector<HTMLFormElement>("#hero-search");
   const searchInput =
     document.querySelector<HTMLInputElement>("#directory-search");
-  const verifiedFilter =
-    document.querySelector<HTMLButtonElement>("#verified-filter");
-  const sortSelect =
-    document.querySelector<HTMLSelectElement>("#sort-directory");
-  const mobileMenuButton = document.querySelector<HTMLButtonElement>(
-    ".mobile-menu-button",
-  );
-  const mobileNav = document.querySelector<HTMLElement>("#mobile-nav");
   const profileDialog =
     document.querySelector<HTMLDialogElement>("#profile-dialog");
   const addProfileForm =
@@ -259,7 +206,7 @@ function bindEvents(): void {
     query = searchInput?.value ?? "";
     renderProfiles();
     document
-      .querySelector("#directory-heading")
+      .querySelector("#directory")
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
@@ -284,21 +231,6 @@ function bindEvents(): void {
     renderProfiles();
   });
 
-  verifiedFilter?.addEventListener("click", () => {
-    verifiedOnly = !verifiedOnly;
-    verifiedFilter.classList.toggle("selected", verifiedOnly);
-    verifiedFilter.setAttribute("aria-pressed", String(verifiedOnly));
-    verifiedFilter.querySelector("span")!.textContent = verifiedOnly
-      ? "Verified only"
-      : "All identities";
-    renderProfiles();
-  });
-
-  sortSelect?.addEventListener("change", (event) => {
-    sort = (event.target as HTMLSelectElement).value as DirectorySort;
-    renderProfiles();
-  });
-
   document
     .querySelector("#profile-results")
     ?.addEventListener("click", (event) => {
@@ -313,17 +245,12 @@ function bindEvents(): void {
       ).closest<HTMLButtonElement>("#clear-filters");
       if (clearFilters) {
         query = "";
-        category = "Trending";
-        verifiedOnly = true;
+        category = "Popular on X.com";
         if (searchInput) searchInput.value = "";
-        verifiedFilter?.classList.add("selected");
-        verifiedFilter?.setAttribute("aria-pressed", "true");
-        const label = verifiedFilter?.querySelector("span");
-        if (label) label.textContent = "Verified only";
         document
           .querySelectorAll<HTMLButtonElement>("[data-category]")
           .forEach((tab) => {
-            const selected = tab.dataset.category === "Trending";
+            const selected = tab.dataset.category === "Popular on X.com";
             tab.classList.toggle("selected", selected);
             tab.setAttribute("aria-selected", String(selected));
           });
@@ -331,29 +258,10 @@ function bindEvents(): void {
       }
     });
 
-  mobileMenuButton?.addEventListener("click", () => {
-    if (!mobileNav) return;
-    const open = mobileNav.hidden;
-    mobileNav.hidden = !open;
-    mobileMenuButton.setAttribute("aria-expanded", String(open));
-    mobileMenuButton.setAttribute(
-      "aria-label",
-      open ? "Close navigation" : "Open navigation",
-    );
-  });
-
-  mobileNav?.addEventListener("click", (event) => {
-    if ((event.target as HTMLElement).closest("a") && mobileMenuButton) {
-      mobileNav.hidden = true;
-      mobileMenuButton.setAttribute("aria-expanded", "false");
-    }
-  });
-
   document
     .querySelectorAll<HTMLButtonElement>("[data-open-profile-dialog]")
     .forEach((button) => {
       button.addEventListener("click", () => {
-        mobileNav?.setAttribute("hidden", "");
         profileDialog?.showModal();
       });
     });
@@ -369,7 +277,7 @@ function bindEvents(): void {
     const name = String(formData.get("name") ?? "").trim();
     const handle = String(formData.get("handle") ?? "").trim();
     const categoryValue = String(
-      formData.get("category") ?? "Creators",
+      formData.get("category") ?? "Popular on X.com",
     ) as DirectoryProfile["category"];
     const npub = String(formData.get("npub") ?? "").trim();
 
@@ -383,6 +291,7 @@ function bindEvents(): void {
         followers: 0,
         verified: false,
         npub,
+        youtube: "",
         avatar: {
           initials: name
             .split(/\s+/)
@@ -396,27 +305,20 @@ function bindEvents(): void {
       },
       ...profiles,
     ];
-    category = "Trending";
+    category = categoryValue;
     query = "";
-    verifiedOnly = false;
     if (searchInput) searchInput.value = "";
-    const count = document.querySelector("#profile-count");
-    if (count) count.textContent = String(profiles.length);
     profileDialog?.close();
     addProfileForm.reset();
-    verifiedFilter?.classList.remove("selected");
-    verifiedFilter?.setAttribute("aria-pressed", "false");
-    const label = verifiedFilter?.querySelector("span");
-    if (label) label.textContent = "All identities";
     document
       .querySelectorAll<HTMLButtonElement>("[data-category]")
       .forEach((tab) => {
-        const selected = tab.dataset.category === "Trending";
+        const selected = tab.dataset.category === categoryValue;
         tab.classList.toggle("selected", selected);
         tab.setAttribute("aria-selected", String(selected));
       });
     renderProfiles();
-    showToast(`${name} was added to this local preview.`);
+    showToast(`${name} was added to your local claim preview.`);
   });
 
   profileDialog?.addEventListener("click", (event) => {
@@ -432,17 +334,17 @@ async function copyNpub(
     if (!navigator.clipboard) throw new Error("Clipboard API unavailable");
     await navigator.clipboard.writeText(npub);
     button.classList.add("copied");
-    showToast("Public key copied to clipboard.");
+    showToast("Nostr public key copied to clipboard.");
     window.setTimeout(() => button.classList.remove("copied"), 1400);
   } catch {
     if (copyWithSelection(npub)) {
       button.classList.add("copied");
-      showToast("Public key copied to clipboard.");
+      showToast("Nostr public key copied to clipboard.");
       window.setTimeout(() => button.classList.remove("copied"), 1400);
       return;
     }
 
-    showToast("Clipboard access was unavailable.");
+    showToast("Nostr public key could not be copied.");
   }
 }
 

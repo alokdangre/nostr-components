@@ -8,10 +8,8 @@ import {
 } from "./directory";
 
 const baseFilters = {
-  category: "Trending" as const,
+  category: "Popular on X.com" as const,
   query: "",
-  sort: "followers" as const,
-  verifiedOnly: true,
 };
 
 describe("directory filtering", () => {
@@ -30,19 +28,18 @@ describe("directory filtering", () => {
     expect(
       getVisibleProfiles(directoryProfiles, {
         ...baseFilters,
-        query: "community",
+        query: "x.com",
       }).map((profile) => profile.id),
-    ).toEqual(["nostr", "snort"]);
+    ).toEqual(["jack", "tbot", "guy-swann"]);
   });
 
-  it("applies the category and alphabetical sort together", () => {
+  it("keeps each tab limited to its platform", () => {
     expect(
       getVisibleProfiles(directoryProfiles, {
         ...baseFilters,
-        category: "Creators",
-        sort: "name",
-      }).map((profile) => profile.name),
-    ).toEqual(["Damus", "Guy Swann"]);
+        category: "Popular on Nostr",
+      }).map((profile) => profile.id),
+    ).toEqual(["damus", "nostr", "snort"]);
   });
 });
 
