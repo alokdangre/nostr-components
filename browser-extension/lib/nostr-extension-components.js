@@ -19834,18 +19834,19 @@
         }
         return profile;
       };
-      getProfileMetadata = async (authorId, relays) => {
+      getProfileMetadata = async (authorId, relays, actionId) => {
         const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
         const cacheKey = profileCacheKey(authorId, relayList);
         const cached = profileCache.get(cacheKey);
         if (cached) return cached;
         const transport = getRelayTransport();
         if (transport) {
-          const events = await transport.query(relayList, {
+          const filter = {
             authors: [authorId],
             kinds: [0],
             limit: 1
-          });
+          };
+          const events = actionId ? await transport.query(relayList, filter, actionId) : await transport.query(relayList, filter);
           const event = [...events].map((candidate) => getVerifiedProfileEvent(candidate, authorId)).filter((candidate) => candidate !== null).sort(
             (left, right) => right.created_at - left.created_at || left.id.localeCompare(right.id)
           )[0] || null;
@@ -19866,7 +19867,7 @@
         }
       };
       PROFILE_QUERY_BATCH_SIZE = 50;
-      getBatchedProfileMetadata = async (authorIds, relays) => {
+      getBatchedProfileMetadata = async (authorIds, relays, actionId) => {
         const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
         const uncachedIds = Array.from(
           new Set(
@@ -19892,7 +19893,7 @@
               kinds: [0],
               limit: batch.length
             };
-            const events = transport ? await transport.query(relayList, filter) : await pool.querySync(relayList, filter);
+            const events = transport ? actionId ? await transport.query(relayList, filter, actionId) : await transport.query(relayList, filter) : await pool.querySync(relayList, filter);
             cacheVerifiedProfiles(events, requestedIds, relayList);
           }
           return authorIds.map((id) => ({
@@ -27481,7 +27482,7 @@ ${url}`;
   `;
   }
   async function openZappersDialog(params) {
-    const { zapDetails, theme = "light", relays } = params;
+    const { zapDetails, theme = "light", relays, actionId } = params;
     injectZappersDialogStyles(theme);
     if (!customElements.get("dialog-component")) {
       await customElements.whenDefined("dialog-component");
@@ -27507,7 +27508,12 @@ ${url}`;
     }
     const dialog = dialogElement;
     if (dialog && zapDetails.length > 0) {
-      enhanceZapDetailsProgressively(dialog, zapDetails, relays);
+      enhanceZapDetailsProgressively(
+        dialog,
+        zapDetails,
+        relays,
+        actionId
+      );
     }
     return dialogComponent;
   }
@@ -27531,7 +27537,7 @@ ${url}`;
     </div>
   `;
   }
-  async function enhanceZapDetailsProgressively(dialog, zapDetails, relays) {
+  async function enhanceZapDetailsProgressively(dialog, zapDetails, relays, actionId) {
     const zappersList = dialog.querySelector(".zappers-list");
     if (!zappersList) return;
     const uniqueAuthorIds = [
@@ -27545,7 +27551,8 @@ ${url}`;
     try {
       const profileResults = await getBatchedProfileMetadata(
         uniqueAuthorIds,
-        relays
+        relays,
+        actionId
       );
       const profileMap = /* @__PURE__ */ new Map();
       profileResults.forEach((result) => {
@@ -27596,10 +27603,15 @@ ${url}`;
       console.log(
         "Nostr-Components: Zappers dialog: Falling back to individual profile fetching"
       );
-      await enhanceZapDetailsIndividually(dialog, zapDetails, relays);
+      await enhanceZapDetailsIndividually(
+        dialog,
+        zapDetails,
+        relays,
+        actionId
+      );
     }
   }
-  async function enhanceZapDetailsIndividually(dialog, zapDetails, relays) {
+  async function enhanceZapDetailsIndividually(dialog, zapDetails, relays, actionId) {
     const zappersList = dialog.querySelector(".zappers-list");
     if (!zappersList) return;
     const profileCache2 = /* @__PURE__ */ new Map();
@@ -27620,7 +27632,8 @@ ${url}`;
         const { getProfileMetadata: getProfileMetadata2 } = await Promise.resolve().then(() => (init_zap_utils(), zap_utils_exports));
         const profileMetadata = await getProfileMetadata2(
           zap.authorPubkey,
-          relays
+          relays,
+          actionId
         );
         const profileContent = extractProfileMetadataContent(profileMetadata);
         const npub2 = hexToNpub(zap.authorPubkey);
@@ -28133,10 +28146,10 @@ ${url}`;
   var NostrZap = class extends NostrUserComponent {
     zapActionStatus = this.channel("zapAction");
     zapListStatus = this.channel("zapList");
-    totalZapAmount = null;
-    cachedZapDetails = [];
-    cachedAmountDialog = null;
-    zapCountLoadSeq = 0;
+    #totalZapAmount = null;
+    #cachedZapDetails = [];
+    #cachedAmountDialog = null;
+    #zapCountLoadSeq = 0;
     constructor() {
       super();
     }
@@ -28171,8 +28184,8 @@ ${url}`;
       this.#closeCachedAmountDialog();
     }
     #closeCachedAmountDialog() {
-      this.cachedAmountDialog?.close();
-      this.cachedAmountDialog = null;
+      this.#cachedAmountDialog?.close();
+      this.#cachedAmountDialog = null;
     }
     /** Base class functions */
     onStatusChange(_status) {
@@ -28283,11 +28296,11 @@ ${url}`;
           return;
         }
         const relays = this.getRelays().join(",");
-        this.cachedAmountDialog = await init({
+        this.#cachedAmountDialog = await init({
           actionId: trustedContext?.actionId,
           npub: npub2,
           relays,
-          cachedDialogComponent: this.cachedAmountDialog,
+          cachedDialogComponent: this.#cachedAmountDialog,
           theme: this.theme === "dark" ? "dark" : "light",
           fixedAmount: (() => {
             const amtAttr = this.getAttribute("amount");
@@ -28327,14 +28340,15 @@ ${url}`;
       }
     }
     async #handleZappersClick() {
-      if (this.cachedZapDetails.length === 0) {
+      if (this.#cachedZapDetails.length === 0) {
         return;
       }
       try {
         await openZappersDialog({
-          zapDetails: this.cachedZapDetails,
+          zapDetails: this.#cachedZapDetails,
           theme: this.theme === "dark" ? "dark" : "light",
-          relays: this.getRelays()
+          relays: this.getRelays(),
+          actionId: getTrustedActionContext(this)?.actionId
         });
       } catch (error) {
         console.error("Nostr-Components: Zap button: Error opening zappers dialog", error);
@@ -28369,30 +28383,30 @@ ${url}`;
     }
     async updateZapCount() {
       if (!this.user) return;
-      const seq = ++this.zapCountLoadSeq;
+      const seq = ++this.#zapCountLoadSeq;
       const trustedContext = getTrustedActionContext(this);
       try {
         this.zapListStatus.set(1 /* Loading */);
         this.render();
         await this.ensureNostrConnected();
-        if (seq !== this.zapCountLoadSeq) return;
+        if (seq !== this.#zapCountLoadSeq) return;
         const result = await fetchTotalZapAmount({
           pubkey: this.user.pubkey,
           relays: this.getRelays(),
           url: trustedContext?.url || this.getAttribute("url") || void 0,
           actionId: trustedContext?.actionId
         });
-        if (seq !== this.zapCountLoadSeq) return;
-        this.totalZapAmount = result.totalAmount;
-        this.cachedZapDetails = result.zapDetails;
+        if (seq !== this.#zapCountLoadSeq) return;
+        this.#totalZapAmount = result.totalAmount;
+        this.#cachedZapDetails = result.zapDetails;
         this.zapListStatus.set(2 /* Ready */);
       } catch (e) {
-        if (seq !== this.zapCountLoadSeq) return;
+        if (seq !== this.#zapCountLoadSeq) return;
         console.error("Nostr-Components: Zap button: Failed to fetch zap count", e);
-        this.totalZapAmount = null;
+        this.#totalZapAmount = null;
         this.zapListStatus.set(3 /* Error */);
       } finally {
-        if (seq === this.zapCountLoadSeq) {
+        if (seq === this.#zapCountLoadSeq) {
           this.render();
         }
       }
@@ -28412,8 +28426,8 @@ ${url}`;
         // TODO: Add success state handling
         errorMessage,
         buttonText,
-        totalZapAmount: this.totalZapAmount,
-        hasZaps: this.cachedZapDetails.length > 0,
+        totalZapAmount: this.#totalZapAmount,
+        hasZaps: this.#cachedZapDetails.length > 0,
         compact: this.hasAttribute("compact")
       };
       setTrustedInnerHTML(this.shadowRoot, `
@@ -28854,7 +28868,10 @@ ${url}`;
     }
     addEventListener("message", onMessage);
     return Object.freeze({
-      query: (relays, filter) => request("query", { relays, filter }),
+      query: (relays, filter, actionId) => request(
+        "query",
+        actionId ? { relays, filter, actionId } : { relays, filter }
+      ),
       getCachedLikeState: (relays, url) => request("getCachedLikeState", { relays, url }),
       getLikeState: (relays, url) => request("getLikeState", { relays, url }),
       publish: (relays, event, actionId) => request("publish", { relays, event, actionId }),

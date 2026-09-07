@@ -343,8 +343,17 @@ export function createMainRelayTransport(
 
   addEventListener('message', onMessage as EventListener);
   return Object.freeze({
-    query: (relays: string[], filter: Record<string, unknown>) =>
-      request('query', { relays, filter }),
+    query: (
+      relays: string[],
+      filter: Record<string, unknown>,
+      actionId?: string,
+    ) =>
+      request(
+        'query',
+        actionId
+          ? { relays, filter, actionId }
+          : { relays, filter },
+      ),
     getCachedLikeState: (relays: string[], url: string) =>
       request('getCachedLikeState', { relays, url }),
     getLikeState: (relays: string[], url: string) =>

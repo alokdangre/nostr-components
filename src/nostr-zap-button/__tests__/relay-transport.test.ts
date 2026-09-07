@@ -158,6 +158,32 @@ describe('Zap component relay transport', () => {
     });
   });
 
+  it('binds extension zapper profile batches to their action capability', async () => {
+    const pubkey = '6'.repeat(64);
+    const actionId = '7'.repeat(64);
+    const relays = ['wss://zapper-profiles.example'];
+    const query = vi.fn().mockResolvedValue([]);
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: { query, publish: vi.fn() },
+    });
+
+    await getBatchedProfileMetadata(
+      [pubkey],
+      relays,
+      actionId,
+    );
+
+    expect(query).toHaveBeenCalledWith(
+      relays,
+      {
+        authors: [pubkey],
+        kinds: [0],
+        limit: 1,
+      },
+      actionId,
+    );
+  });
+
   it('deduplicates mixed-case authors before the host profile query', async () => {
     const pubkey = 'ab'.repeat(32);
     const query = vi.fn().mockResolvedValue([]);

@@ -8141,7 +8141,10 @@
         }
       };
     }
-    function isFilterBoundToAction(filter) {
+    function isFilterBoundToAction(filter, actionId) {
+      if (filter.kinds[0] === 0 && ACTION_ID_PATTERN.test(String(actionId || "")) && actionContexts.has(actionId)) {
+        return true;
+      }
       for (const context of actionContexts.values()) {
         if (filter.kinds[0] === 17 && filter["#i"]?.[0] === context.url) {
           return true;
@@ -8208,7 +8211,9 @@
       }
       if (message.operation === "query") {
         const filter = validateFilter(payload.filter);
-        if (!filter || !isFilterBoundToAction(filter)) {
+        if (Object.keys(payload).some(
+          (key) => key !== "relays" && key !== "filter" && key !== "actionId"
+        ) || !filter || !isFilterBoundToAction(filter, payload.actionId)) {
           throw new Error("Relay request contains an unsupported filter");
         }
         const events = await queryWithFastQuorum(pool, relays, filter);

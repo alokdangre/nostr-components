@@ -37,10 +37,10 @@ export default class NostrZap extends NostrUserComponent {
   protected zapActionStatus=   this.channel('zapAction');
   protected zapListStatus  =   this.channel('zapList');
   
-  private totalZapAmount: number | null = null;
-  private cachedZapDetails: ZapDetails[] = [];
-  private cachedAmountDialog: DialogComponent | null = null;
-  private zapCountLoadSeq = 0;
+  #totalZapAmount: number | null = null;
+  #cachedZapDetails: ZapDetails[] = [];
+  #cachedAmountDialog: DialogComponent | null = null;
+  #zapCountLoadSeq = 0;
 
   constructor() {
     super();
@@ -87,8 +87,8 @@ export default class NostrZap extends NostrUserComponent {
   }
 
   #closeCachedAmountDialog() {
-    this.cachedAmountDialog?.close();
-    this.cachedAmountDialog = null;
+    this.#cachedAmountDialog?.close();
+    this.#cachedAmountDialog = null;
   }
 
   /** Base class functions */
@@ -228,11 +228,11 @@ export default class NostrZap extends NostrUserComponent {
 
       const relays = this.getRelays().join(",");
 
-      this.cachedAmountDialog = await openZapModal({
+      this.#cachedAmountDialog = await openZapModal({
         actionId: trustedContext?.actionId,
         npub,
         relays,
-        cachedDialogComponent: this.cachedAmountDialog,
+        cachedDialogComponent: this.#cachedAmountDialog,
         theme: this.theme === 'dark' ? 'dark' : 'light',
         fixedAmount: (() => {
           const amtAttr = this.getAttribute("amount");
@@ -274,15 +274,16 @@ export default class NostrZap extends NostrUserComponent {
   }
 
   async #handleZappersClick() {
-    if (this.cachedZapDetails.length === 0) {
+    if (this.#cachedZapDetails.length === 0) {
       return; // No zaps to show
     }
 
     try {
       await openZappersDialog({
-        zapDetails: this.cachedZapDetails,
+        zapDetails: this.#cachedZapDetails,
         theme: this.theme === 'dark' ? 'dark' : 'light',
         relays: this.getRelays(),
+        actionId: getTrustedActionContext(this)?.actionId,
       });
     } catch (error) {
       console.error("Nostr-Components: Zap button: Error opening zappers dialog", error);
@@ -322,7 +323,7 @@ export default class NostrZap extends NostrUserComponent {
 
   private async updateZapCount() {
     if (!this.user) return;
-    const seq = ++this.zapCountLoadSeq;
+    const seq = ++this.#zapCountLoadSeq;
     const trustedContext = getTrustedActionContext(this);
 
     try {
@@ -330,7 +331,7 @@ export default class NostrZap extends NostrUserComponent {
       this.render();
       
       await this.ensureNostrConnected();
-      if (seq !== this.zapCountLoadSeq) return;
+      if (seq !== this.#zapCountLoadSeq) return;
 
       const result = await fetchTotalZapAmount({ 
         pubkey: this.user.pubkey, 
@@ -338,18 +339,18 @@ export default class NostrZap extends NostrUserComponent {
         url: trustedContext?.url || this.getAttribute("url") || undefined,
         actionId: trustedContext?.actionId,
       });
-      if (seq !== this.zapCountLoadSeq) return;
+      if (seq !== this.#zapCountLoadSeq) return;
 
-      this.totalZapAmount = result.totalAmount;
-      this.cachedZapDetails = result.zapDetails;
+      this.#totalZapAmount = result.totalAmount;
+      this.#cachedZapDetails = result.zapDetails;
       this.zapListStatus.set(NCStatus.Ready);
     } catch (e) {
-      if (seq !== this.zapCountLoadSeq) return;
+      if (seq !== this.#zapCountLoadSeq) return;
       console.error("Nostr-Components: Zap button: Failed to fetch zap count", e);
-      this.totalZapAmount = null;
+      this.#totalZapAmount = null;
       this.zapListStatus.set(NCStatus.Error);
     } finally {
-      if (seq === this.zapCountLoadSeq) {
+      if (seq === this.#zapCountLoadSeq) {
         this.render();
       }
     }
@@ -370,8 +371,8 @@ export default class NostrZap extends NostrUserComponent {
       isSuccess: false, // TODO: Add success state handling
       errorMessage: errorMessage,
       buttonText: buttonText,
-      totalZapAmount: this.totalZapAmount,
-      hasZaps: this.cachedZapDetails.length > 0,
+      totalZapAmount: this.#totalZapAmount,
+      hasZaps: this.#cachedZapDetails.length > 0,
       compact: this.hasAttribute('compact'),
     };
 

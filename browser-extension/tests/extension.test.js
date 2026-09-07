@@ -1876,6 +1876,87 @@ describe('CSP-safe component and relay integration', function () {
     ).toBeNull();
   });
 
+  it('scopes zapper profile queries to a live action capability', async function () {
+    const listeners = new Map();
+    const responses = [];
+    const pageWindow = {
+      location: { origin: 'https://x.com' },
+      addEventListener(type, listener) {
+        listeners.set(type, listener);
+      },
+      removeEventListener(type) {
+        listeners.delete(type);
+      },
+      postMessage(message) {
+        responses.push(message);
+      }
+    };
+    const profile = finalizeEvent(
+      {
+        kind: 0,
+        created_at: 42,
+        tags: [],
+        content: JSON.stringify({ name: 'Zapper' })
+      },
+      new Uint8Array(32).fill(14)
+    );
+    const pool = {
+      subscribe(_relays, _filter, options) {
+        queueMicrotask(function () {
+          options.onevent(profile);
+          options.oneose();
+        });
+        return { close: vi.fn(async function () {}) };
+      },
+      destroy: vi.fn()
+    };
+    const channel = '4'.repeat(64);
+    const actionId = '5'.repeat(64);
+    const session = extension.relayClient.configure(channel, {
+      pool,
+      window: pageWindow
+    });
+    extension.relayClient.registerActionContext(actionId, {
+      kind: 'x',
+      url: 'https://x.com/alice/status/42',
+      recipientNpub: null
+    });
+    const request = (requestId) =>
+      createAuthenticatedRelayRequest(
+        channel,
+        requestId,
+        'query',
+        {
+          relays: ['wss://relay.damus.io'],
+          filter: {
+            kinds: [0],
+            authors: [profile.pubkey],
+            limit: 1
+          },
+          actionId
+        }
+      );
+
+    await listeners.get('message')({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: await request('4'.repeat(32))
+    });
+    extension.relayClient.revokeActionContext(actionId);
+    await listeners.get('message')({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: await request('5'.repeat(32))
+    });
+
+    expect(responses[0]).toMatchObject({
+      ok: true,
+      result: [expect.objectContaining({ id: profile.id })]
+    });
+    expect(responses[1].ok).toBe(false);
+    session.dispose();
+  });
+
   it('prepares only an action-bound Zap invoice in the isolated world', async function () {
     const listeners = new Map();
     const responses = [];

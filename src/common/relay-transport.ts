@@ -12,7 +12,11 @@ export interface NostrRelayZapProvider {
 }
 
 export interface NostrRelayTransport {
-  query(relays: string[], filter: Record<string, unknown>): Promise<any[]>;
+  query(
+    relays: string[],
+    filter: Record<string, unknown>,
+    actionId?: string,
+  ): Promise<any[]>;
   getCachedLikeState?(
     relays: string[],
     url: string,

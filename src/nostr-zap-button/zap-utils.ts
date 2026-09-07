@@ -66,7 +66,11 @@ const getVerifiedProfileEvent = (
   return profile;
 };
 
-export const getProfileMetadata = async (authorId: string, relays?: string[]) => {
+export const getProfileMetadata = async (
+  authorId: string,
+  relays?: string[],
+  actionId?: string,
+) => {
   const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
   const cacheKey = profileCacheKey(authorId, relayList);
   const cached = profileCache.get(cacheKey);
@@ -74,11 +78,14 @@ export const getProfileMetadata = async (authorId: string, relays?: string[]) =>
 
   const transport = getRelayTransport();
   if (transport) {
-    const events = await transport.query(relayList, {
+    const filter = {
       authors: [authorId],
       kinds: [0],
       limit: 1,
-    });
+    };
+    const events = actionId
+      ? await transport.query(relayList, filter, actionId)
+      : await transport.query(relayList, filter);
     const event =
       [...events]
         .map(candidate => getVerifiedProfileEvent(candidate, authorId))
@@ -135,7 +142,11 @@ function cacheVerifiedProfiles(
   }
 }
 
-export const getBatchedProfileMetadata = async (authorIds: string[], relays?: string[]) => {
+export const getBatchedProfileMetadata = async (
+  authorIds: string[],
+  relays?: string[],
+  actionId?: string,
+) => {
   const relayList = relays && relays.length > 0 ? relays : [...DEFAULT_RELAYS];
   const uncachedIds = Array.from(
     new Set(
@@ -168,8 +179,10 @@ export const getBatchedProfileMetadata = async (authorIds: string[], relays?: st
         kinds: [0],
         limit: batch.length,
       };
-      const events = transport
-        ? await transport.query(relayList, filter)
+        const events = transport
+          ? actionId
+            ? await transport.query(relayList, filter, actionId)
+            : await transport.query(relayList, filter)
         : await pool!.querySync(relayList, filter);
       cacheVerifiedProfiles(events, requestedIds, relayList);
     }
