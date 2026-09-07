@@ -180,6 +180,12 @@
     if (extension.url.isValidNpub(recipientNpub)) {
       slot.setAttribute('data-recipient-npub', recipientNpub);
     }
+    extension.componentLoader?.registerAction?.(slot, {
+      kind: 'youtube',
+      url: videoInfo.canonicalUrl,
+      theme: theme,
+      recipientNpub: recipientNpub
+    });
     stopActionNavigation(slot);
     return { slot: slot };
   }
@@ -230,6 +236,7 @@
 
   function updateActionTheme(slot, theme) {
     slot.dataset.theme = theme;
+    extension.componentLoader?.updateAction?.(slot, { theme: theme });
     for (const selector of ['nostr-like-button', 'nostr-zap-button']) {
       const component = slot.querySelector(selector);
       if (component && component.getAttribute('data-theme') !== theme) {
@@ -241,8 +248,14 @@
   function updateRecipient(slot, recipientNpub) {
     if (extension.url.isValidNpub(recipientNpub)) {
       slot.dataset.recipientNpub = recipientNpub;
+      extension.componentLoader?.updateAction?.(slot, {
+        recipientNpub: recipientNpub
+      });
     } else {
       delete slot.dataset.recipientNpub;
+      extension.componentLoader?.updateAction?.(slot, {
+        recipientNpub: null
+      });
     }
     if (slot.querySelector('nostr-like-button')) syncZapComponent(slot);
   }

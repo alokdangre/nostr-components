@@ -19300,6 +19300,9 @@
     }
     installedRelayTransport = transport;
   }
+  function hasInstalledRelayTransport() {
+    return installedRelayTransport !== null;
+  }
   function getRelayTransport() {
     if (installedRelayTransport) return installedRelayTransport;
     const transport = globalThis.__nostrComponentsRelayTransport;
@@ -20974,8 +20977,8 @@
           emptyHTML = trustedTypesPolicy.createHTML("");
         }
       }
-      if (freeze) {
-        freeze(cfg);
+      if (freeze2) {
+        freeze2(cfg);
       }
       CONFIG = cfg;
     };
@@ -21462,7 +21465,7 @@
     };
     return DOMPurify;
   }
-  var entries, setPrototypeOf, isFrozen, getPrototypeOf, getOwnPropertyDescriptor, freeze, seal, create, apply, construct, arrayForEach, arrayLastIndexOf, arrayPop, arrayPush, arraySplice, stringToLowerCase, stringToString, stringMatch, stringReplace, stringIndexOf, stringTrim, objectHasOwnProperty, regExpTest, typeErrorCreate, html$1, svg$1, svgFilters, svgDisallowed, mathMl$1, mathMlDisallowed, text, html, svg, mathMl, xml, MUSTACHE_EXPR, ERB_EXPR, TMPLIT_EXPR, DATA_ATTR, ARIA_ATTR, IS_ALLOWED_URI, IS_SCRIPT_OR_DATA, ATTR_WHITESPACE, DOCTYPE_NAME, CUSTOM_ELEMENT, EXPRESSIONS, NODE_TYPE, getGlobal, _createTrustedTypesPolicy, _createHooksMap, purify;
+  var entries, setPrototypeOf, isFrozen, getPrototypeOf, getOwnPropertyDescriptor, freeze2, seal, create, apply, construct, arrayForEach, arrayLastIndexOf, arrayPop, arrayPush, arraySplice, stringToLowerCase, stringToString, stringMatch, stringReplace, stringIndexOf, stringTrim, objectHasOwnProperty, regExpTest, typeErrorCreate, html$1, svg$1, svgFilters, svgDisallowed, mathMl$1, mathMlDisallowed, text, html, svg, mathMl, xml, MUSTACHE_EXPR, ERB_EXPR, TMPLIT_EXPR, DATA_ATTR, ARIA_ATTR, IS_ALLOWED_URI, IS_SCRIPT_OR_DATA, ATTR_WHITESPACE, DOCTYPE_NAME, CUSTOM_ELEMENT, EXPRESSIONS, NODE_TYPE, getGlobal, _createTrustedTypesPolicy, _createHooksMap, purify;
   var init_purify_es = __esm({
     "node_modules/dompurify/dist/purify.es.mjs"() {
       ({
@@ -21473,7 +21476,7 @@
         getOwnPropertyDescriptor
       } = Object);
       ({
-        freeze,
+        freeze: freeze2,
         seal,
         create
       } = Object);
@@ -21481,8 +21484,8 @@
         apply,
         construct
       } = typeof Reflect !== "undefined" && Reflect);
-      if (!freeze) {
-        freeze = function freeze2(x) {
+      if (!freeze2) {
+        freeze2 = function freeze3(x) {
           return x;
         };
       }
@@ -21515,17 +21518,17 @@
       objectHasOwnProperty = unapply(Object.prototype.hasOwnProperty);
       regExpTest = unapply(RegExp.prototype.test);
       typeErrorCreate = unconstruct(TypeError);
-      html$1 = freeze(["a", "abbr", "acronym", "address", "area", "article", "aside", "audio", "b", "bdi", "bdo", "big", "blink", "blockquote", "body", "br", "button", "canvas", "caption", "center", "cite", "code", "col", "colgroup", "content", "data", "datalist", "dd", "decorator", "del", "details", "dfn", "dialog", "dir", "div", "dl", "dt", "element", "em", "fieldset", "figcaption", "figure", "font", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "i", "img", "input", "ins", "kbd", "label", "legend", "li", "main", "map", "mark", "marquee", "menu", "menuitem", "meter", "nav", "nobr", "ol", "optgroup", "option", "output", "p", "picture", "pre", "progress", "q", "rp", "rt", "ruby", "s", "samp", "section", "select", "shadow", "small", "source", "spacer", "span", "strike", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "time", "tr", "track", "tt", "u", "ul", "var", "video", "wbr"]);
-      svg$1 = freeze(["svg", "a", "altglyph", "altglyphdef", "altglyphitem", "animatecolor", "animatemotion", "animatetransform", "circle", "clippath", "defs", "desc", "ellipse", "filter", "font", "g", "glyph", "glyphref", "hkern", "image", "line", "lineargradient", "marker", "mask", "metadata", "mpath", "path", "pattern", "polygon", "polyline", "radialgradient", "rect", "stop", "style", "switch", "symbol", "text", "textpath", "title", "tref", "tspan", "view", "vkern"]);
-      svgFilters = freeze(["feBlend", "feColorMatrix", "feComponentTransfer", "feComposite", "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood", "feFuncA", "feFuncB", "feFuncG", "feFuncR", "feGaussianBlur", "feImage", "feMerge", "feMergeNode", "feMorphology", "feOffset", "fePointLight", "feSpecularLighting", "feSpotLight", "feTile", "feTurbulence"]);
-      svgDisallowed = freeze(["animate", "color-profile", "cursor", "discard", "font-face", "font-face-format", "font-face-name", "font-face-src", "font-face-uri", "foreignobject", "hatch", "hatchpath", "mesh", "meshgradient", "meshpatch", "meshrow", "missing-glyph", "script", "set", "solidcolor", "unknown", "use"]);
-      mathMl$1 = freeze(["math", "menclose", "merror", "mfenced", "mfrac", "mglyph", "mi", "mlabeledtr", "mmultiscripts", "mn", "mo", "mover", "mpadded", "mphantom", "mroot", "mrow", "ms", "mspace", "msqrt", "mstyle", "msub", "msup", "msubsup", "mtable", "mtd", "mtext", "mtr", "munder", "munderover", "mprescripts"]);
-      mathMlDisallowed = freeze(["maction", "maligngroup", "malignmark", "mlongdiv", "mscarries", "mscarry", "msgroup", "mstack", "msline", "msrow", "semantics", "annotation", "annotation-xml", "mprescripts", "none"]);
-      text = freeze(["#text"]);
-      html = freeze(["accept", "action", "align", "alt", "autocapitalize", "autocomplete", "autopictureinpicture", "autoplay", "background", "bgcolor", "border", "capture", "cellpadding", "cellspacing", "checked", "cite", "class", "clear", "color", "cols", "colspan", "controls", "controlslist", "coords", "crossorigin", "datetime", "decoding", "default", "dir", "disabled", "disablepictureinpicture", "disableremoteplayback", "download", "draggable", "enctype", "enterkeyhint", "face", "for", "headers", "height", "hidden", "high", "href", "hreflang", "id", "inputmode", "integrity", "ismap", "kind", "label", "lang", "list", "loading", "loop", "low", "max", "maxlength", "media", "method", "min", "minlength", "multiple", "muted", "name", "nonce", "noshade", "novalidate", "nowrap", "open", "optimum", "pattern", "placeholder", "playsinline", "popover", "popovertarget", "popovertargetaction", "poster", "preload", "pubdate", "radiogroup", "readonly", "rel", "required", "rev", "reversed", "role", "rows", "rowspan", "spellcheck", "scope", "selected", "shape", "size", "sizes", "span", "srclang", "start", "src", "srcset", "step", "style", "summary", "tabindex", "title", "translate", "type", "usemap", "valign", "value", "width", "wrap", "xmlns", "slot"]);
-      svg = freeze(["accent-height", "accumulate", "additive", "alignment-baseline", "amplitude", "ascent", "attributename", "attributetype", "azimuth", "basefrequency", "baseline-shift", "begin", "bias", "by", "class", "clip", "clippathunits", "clip-path", "clip-rule", "color", "color-interpolation", "color-interpolation-filters", "color-profile", "color-rendering", "cx", "cy", "d", "dx", "dy", "diffuseconstant", "direction", "display", "divisor", "dur", "edgemode", "elevation", "end", "exponent", "fill", "fill-opacity", "fill-rule", "filter", "filterunits", "flood-color", "flood-opacity", "font-family", "font-size", "font-size-adjust", "font-stretch", "font-style", "font-variant", "font-weight", "fx", "fy", "g1", "g2", "glyph-name", "glyphref", "gradientunits", "gradienttransform", "height", "href", "id", "image-rendering", "in", "in2", "intercept", "k", "k1", "k2", "k3", "k4", "kerning", "keypoints", "keysplines", "keytimes", "lang", "lengthadjust", "letter-spacing", "kernelmatrix", "kernelunitlength", "lighting-color", "local", "marker-end", "marker-mid", "marker-start", "markerheight", "markerunits", "markerwidth", "maskcontentunits", "maskunits", "max", "mask", "media", "method", "mode", "min", "name", "numoctaves", "offset", "operator", "opacity", "order", "orient", "orientation", "origin", "overflow", "paint-order", "path", "pathlength", "patterncontentunits", "patterntransform", "patternunits", "points", "preservealpha", "preserveaspectratio", "primitiveunits", "r", "rx", "ry", "radius", "refx", "refy", "repeatcount", "repeatdur", "restart", "result", "rotate", "scale", "seed", "shape-rendering", "slope", "specularconstant", "specularexponent", "spreadmethod", "startoffset", "stddeviation", "stitchtiles", "stop-color", "stop-opacity", "stroke-dasharray", "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "stroke-miterlimit", "stroke-opacity", "stroke", "stroke-width", "style", "surfacescale", "systemlanguage", "tabindex", "tablevalues", "targetx", "targety", "transform", "transform-origin", "text-anchor", "text-decoration", "text-rendering", "textlength", "type", "u1", "u2", "unicode", "values", "viewbox", "visibility", "version", "vert-adv-y", "vert-origin-x", "vert-origin-y", "width", "word-spacing", "wrap", "writing-mode", "xchannelselector", "ychannelselector", "x", "x1", "x2", "xmlns", "y", "y1", "y2", "z", "zoomandpan"]);
-      mathMl = freeze(["accent", "accentunder", "align", "bevelled", "close", "columnsalign", "columnlines", "columnspan", "denomalign", "depth", "dir", "display", "displaystyle", "encoding", "fence", "frame", "height", "href", "id", "largeop", "length", "linethickness", "lspace", "lquote", "mathbackground", "mathcolor", "mathsize", "mathvariant", "maxsize", "minsize", "movablelimits", "notation", "numalign", "open", "rowalign", "rowlines", "rowspacing", "rowspan", "rspace", "rquote", "scriptlevel", "scriptminsize", "scriptsizemultiplier", "selection", "separator", "separators", "stretchy", "subscriptshift", "supscriptshift", "symmetric", "voffset", "width", "xmlns"]);
-      xml = freeze(["xlink:href", "xml:id", "xlink:title", "xml:space", "xmlns:xlink"]);
+      html$1 = freeze2(["a", "abbr", "acronym", "address", "area", "article", "aside", "audio", "b", "bdi", "bdo", "big", "blink", "blockquote", "body", "br", "button", "canvas", "caption", "center", "cite", "code", "col", "colgroup", "content", "data", "datalist", "dd", "decorator", "del", "details", "dfn", "dialog", "dir", "div", "dl", "dt", "element", "em", "fieldset", "figcaption", "figure", "font", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "i", "img", "input", "ins", "kbd", "label", "legend", "li", "main", "map", "mark", "marquee", "menu", "menuitem", "meter", "nav", "nobr", "ol", "optgroup", "option", "output", "p", "picture", "pre", "progress", "q", "rp", "rt", "ruby", "s", "samp", "section", "select", "shadow", "small", "source", "spacer", "span", "strike", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "time", "tr", "track", "tt", "u", "ul", "var", "video", "wbr"]);
+      svg$1 = freeze2(["svg", "a", "altglyph", "altglyphdef", "altglyphitem", "animatecolor", "animatemotion", "animatetransform", "circle", "clippath", "defs", "desc", "ellipse", "filter", "font", "g", "glyph", "glyphref", "hkern", "image", "line", "lineargradient", "marker", "mask", "metadata", "mpath", "path", "pattern", "polygon", "polyline", "radialgradient", "rect", "stop", "style", "switch", "symbol", "text", "textpath", "title", "tref", "tspan", "view", "vkern"]);
+      svgFilters = freeze2(["feBlend", "feColorMatrix", "feComponentTransfer", "feComposite", "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood", "feFuncA", "feFuncB", "feFuncG", "feFuncR", "feGaussianBlur", "feImage", "feMerge", "feMergeNode", "feMorphology", "feOffset", "fePointLight", "feSpecularLighting", "feSpotLight", "feTile", "feTurbulence"]);
+      svgDisallowed = freeze2(["animate", "color-profile", "cursor", "discard", "font-face", "font-face-format", "font-face-name", "font-face-src", "font-face-uri", "foreignobject", "hatch", "hatchpath", "mesh", "meshgradient", "meshpatch", "meshrow", "missing-glyph", "script", "set", "solidcolor", "unknown", "use"]);
+      mathMl$1 = freeze2(["math", "menclose", "merror", "mfenced", "mfrac", "mglyph", "mi", "mlabeledtr", "mmultiscripts", "mn", "mo", "mover", "mpadded", "mphantom", "mroot", "mrow", "ms", "mspace", "msqrt", "mstyle", "msub", "msup", "msubsup", "mtable", "mtd", "mtext", "mtr", "munder", "munderover", "mprescripts"]);
+      mathMlDisallowed = freeze2(["maction", "maligngroup", "malignmark", "mlongdiv", "mscarries", "mscarry", "msgroup", "mstack", "msline", "msrow", "semantics", "annotation", "annotation-xml", "mprescripts", "none"]);
+      text = freeze2(["#text"]);
+      html = freeze2(["accept", "action", "align", "alt", "autocapitalize", "autocomplete", "autopictureinpicture", "autoplay", "background", "bgcolor", "border", "capture", "cellpadding", "cellspacing", "checked", "cite", "class", "clear", "color", "cols", "colspan", "controls", "controlslist", "coords", "crossorigin", "datetime", "decoding", "default", "dir", "disabled", "disablepictureinpicture", "disableremoteplayback", "download", "draggable", "enctype", "enterkeyhint", "face", "for", "headers", "height", "hidden", "high", "href", "hreflang", "id", "inputmode", "integrity", "ismap", "kind", "label", "lang", "list", "loading", "loop", "low", "max", "maxlength", "media", "method", "min", "minlength", "multiple", "muted", "name", "nonce", "noshade", "novalidate", "nowrap", "open", "optimum", "pattern", "placeholder", "playsinline", "popover", "popovertarget", "popovertargetaction", "poster", "preload", "pubdate", "radiogroup", "readonly", "rel", "required", "rev", "reversed", "role", "rows", "rowspan", "spellcheck", "scope", "selected", "shape", "size", "sizes", "span", "srclang", "start", "src", "srcset", "step", "style", "summary", "tabindex", "title", "translate", "type", "usemap", "valign", "value", "width", "wrap", "xmlns", "slot"]);
+      svg = freeze2(["accent-height", "accumulate", "additive", "alignment-baseline", "amplitude", "ascent", "attributename", "attributetype", "azimuth", "basefrequency", "baseline-shift", "begin", "bias", "by", "class", "clip", "clippathunits", "clip-path", "clip-rule", "color", "color-interpolation", "color-interpolation-filters", "color-profile", "color-rendering", "cx", "cy", "d", "dx", "dy", "diffuseconstant", "direction", "display", "divisor", "dur", "edgemode", "elevation", "end", "exponent", "fill", "fill-opacity", "fill-rule", "filter", "filterunits", "flood-color", "flood-opacity", "font-family", "font-size", "font-size-adjust", "font-stretch", "font-style", "font-variant", "font-weight", "fx", "fy", "g1", "g2", "glyph-name", "glyphref", "gradientunits", "gradienttransform", "height", "href", "id", "image-rendering", "in", "in2", "intercept", "k", "k1", "k2", "k3", "k4", "kerning", "keypoints", "keysplines", "keytimes", "lang", "lengthadjust", "letter-spacing", "kernelmatrix", "kernelunitlength", "lighting-color", "local", "marker-end", "marker-mid", "marker-start", "markerheight", "markerunits", "markerwidth", "maskcontentunits", "maskunits", "max", "mask", "media", "method", "mode", "min", "name", "numoctaves", "offset", "operator", "opacity", "order", "orient", "orientation", "origin", "overflow", "paint-order", "path", "pathlength", "patterncontentunits", "patterntransform", "patternunits", "points", "preservealpha", "preserveaspectratio", "primitiveunits", "r", "rx", "ry", "radius", "refx", "refy", "repeatcount", "repeatdur", "restart", "result", "rotate", "scale", "seed", "shape-rendering", "slope", "specularconstant", "specularexponent", "spreadmethod", "startoffset", "stddeviation", "stitchtiles", "stop-color", "stop-opacity", "stroke-dasharray", "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "stroke-miterlimit", "stroke-opacity", "stroke", "stroke-width", "style", "surfacescale", "systemlanguage", "tabindex", "tablevalues", "targetx", "targety", "transform", "transform-origin", "text-anchor", "text-decoration", "text-rendering", "textlength", "type", "u1", "u2", "unicode", "values", "viewbox", "visibility", "version", "vert-adv-y", "vert-origin-x", "vert-origin-y", "width", "word-spacing", "wrap", "writing-mode", "xchannelselector", "ychannelselector", "x", "x1", "x2", "xmlns", "y", "y1", "y2", "z", "zoomandpan"]);
+      mathMl = freeze2(["accent", "accentunder", "align", "bevelled", "close", "columnsalign", "columnlines", "columnspan", "denomalign", "depth", "dir", "display", "displaystyle", "encoding", "fence", "frame", "height", "href", "id", "largeop", "length", "linethickness", "lspace", "lquote", "mathbackground", "mathcolor", "mathsize", "mathvariant", "maxsize", "minsize", "movablelimits", "notation", "numalign", "open", "rowalign", "rowlines", "rowspacing", "rowspan", "rspace", "rquote", "scriptlevel", "scriptminsize", "scriptsizemultiplier", "selection", "separator", "separators", "stretchy", "subscriptshift", "supscriptshift", "symmetric", "voffset", "width", "xmlns"]);
+      xml = freeze2(["xlink:href", "xml:id", "xlink:title", "xml:space", "xmlns:xlink"]);
       MUSTACHE_EXPR = seal(/\{\{[\w\W]*|[\w\W]*\}\}/gm);
       ERB_EXPR = seal(/<%[\w\W]*|[\w\W]*%>/gm);
       TMPLIT_EXPR = seal(/\$\{[\w\W]*/gm);
@@ -25819,6 +25822,25 @@ ${url}`;
   init_utils7();
   init_trusted_html();
 
+  // src/common/trusted-action-context.ts
+  var contexts = /* @__PURE__ */ new WeakMap();
+  var setContext = contexts.set.bind(contexts);
+  var getContext = contexts.get.bind(contexts);
+  var freeze = Object.freeze.bind(Object);
+  function bindTrustedActionContext(component, context) {
+    setContext(
+      component,
+      freeze({
+        kind: context.kind,
+        url: context.url,
+        recipientNpub: context.recipientNpub
+      })
+    );
+  }
+  function getTrustedActionContext(component) {
+    return getContext(component) || null;
+  }
+
   // src/nostr-like-button/optimistic-state.ts
   function clampLikeCount(nextCount) {
     return Math.max(0, nextCount);
@@ -25909,7 +25931,15 @@ ${url}`;
         this.likeListStatus.set(0 /* Idle */);
         return false;
       }
-      const urlAttr = this.getAttribute("url");
+      if (hasInstalledRelayTransport() && !getTrustedActionContext(this)) {
+        this.likeActionStatus.set(
+          3 /* Error */,
+          "Untrusted extension action"
+        );
+        this.likeListStatus.set(3 /* Error */, "Untrusted extension action");
+        return false;
+      }
+      const urlAttr = this.getActionUrl();
       const textAttr = this.getAttribute("text");
       const tagName = this.tagName.toLowerCase();
       let errorMessage = null;
@@ -25938,6 +25968,9 @@ ${url}`;
     }
     /** A host relay transport replaces only networking, not the component UI/signer. */
     async connectToNostr() {
+      if (hasInstalledRelayTransport() && !getTrustedActionContext(this)) {
+        throw new Error("Untrusted extension action");
+      }
       if (!getRelayTransport()) {
         await super.connectToNostr();
         return;
@@ -25954,9 +25987,12 @@ ${url}`;
     /**
      * Lazy initializer for currentUrl - ensures it's set before like/unlike operations
      */
+    getActionUrl() {
+      return getTrustedActionContext(this)?.url || this.getAttribute("url") || window.location.href;
+    }
     ensureCurrentUrl() {
       if (!this.currentUrl) {
-        this.currentUrl = normalizeURL2(this.getAttribute("url") || window.location.href);
+        this.currentUrl = normalizeURL2(this.getActionUrl());
       }
     }
     async updateLikeCount() {
@@ -25964,7 +26000,7 @@ ${url}`;
       try {
         await this.ensureNostrConnected();
         if (seq !== this.loadSeq) return;
-        this.currentUrl = normalizeURL2(this.getAttribute("url") || window.location.href);
+        this.currentUrl = normalizeURL2(this.getActionUrl());
         this.likeListStatus.set(1 /* Loading */);
         this.render();
         try {
@@ -27969,6 +28005,9 @@ ${url}`;
     }
     /** A host relay transport replaces only networking, not the component UI/signer. */
     async connectToNostr() {
+      if (hasInstalledRelayTransport() && !getTrustedActionContext(this)) {
+        throw new Error("Untrusted extension action");
+      }
       if (!getRelayTransport()) {
         await super.connectToNostr();
         return;
@@ -27983,6 +28022,12 @@ ${url}`;
     }
     /** Protected methods */
     validateInputs() {
+      if (hasInstalledRelayTransport() && !getTrustedActionContext(this)) {
+        this.zapActionStatus.set(3 /* Error */, "Untrusted extension action");
+        this.zapListStatus.set(3 /* Error */, "Untrusted extension action");
+        this.userStatus.set(0 /* Idle */);
+        return false;
+      }
       if (!super.validateInputs()) {
         this.zapActionStatus.set(0 /* Idle */);
         this.zapListStatus.set(0 /* Idle */);
@@ -27991,7 +28036,7 @@ ${url}`;
       const textAttr = this.getAttribute("text");
       const amtAttr = this.getAttribute("amount");
       const defaultAmtAttr = this.getAttribute("default-amount");
-      const urlAttr = this.getAttribute("url");
+      const urlAttr = getTrustedActionContext(this)?.url || this.getAttribute("url");
       const tagName = this.tagName.toLowerCase();
       let errorMessage = null;
       if (textAttr && textAttr.length > 128) {
@@ -28048,13 +28093,17 @@ ${url}`;
           this.render();
           return;
         }
-        if (!this.user) {
+        const trustedContext = getTrustedActionContext(this);
+        if (hasInstalledRelayTransport() && !trustedContext) {
+          throw new Error("Untrusted extension action");
+        }
+        const npub2 = trustedContext?.recipientNpub || this.user?.npub || this.getAttribute("npub");
+        if (!npub2) {
           this.zapActionStatus.set(3 /* Error */, "Could not resolve user to zap.");
           this.render();
           return;
         }
         const relays = this.getRelays().join(",");
-        const npub2 = this.user.npub;
         this.cachedAmountDialog = await init({
           npub: npub2,
           relays,
@@ -28080,7 +28129,7 @@ ${url}`;
             }
             return num2;
           })(),
-          url: this.getAttribute("url") || void 0,
+          url: trustedContext?.url || this.getAttribute("url") || void 0,
           anon: false
         });
         this.zapActionStatus.set(2 /* Ready */);
@@ -28196,11 +28245,31 @@ ${url}`;
 
   // browser-extension/src/component-hydrator.js
   var COMPONENT_HYDRATION_EVENT_PREFIX = "nostr-components-hydrate:";
-  function setCommonAttributes(component, slot) {
-    component.setAttribute("url", slot.dataset.statusUrl || "");
+  var NPUB_PATTERN = /^npub1[023456789acdefghjklmnpqrstuvwxyz]{58}$/;
+  function normalizeContext(value) {
+    if (!value || value.kind !== "x" && value.kind !== "youtube" || typeof value.url !== "string" || !value.url.startsWith("https://")) {
+      return null;
+    }
+    const recipientNpub = typeof value.recipientNpub === "string" && NPUB_PATTERN.test(value.recipientNpub) ? value.recipientNpub : null;
+    return {
+      kind: value.kind,
+      url: value.url,
+      theme: value.theme === "dark" ? "dark" : "light",
+      recipientNpub
+    };
+  }
+  function bindContext(component, context) {
+    bindTrustedActionContext(component, {
+      kind: context.kind,
+      url: context.url,
+      recipientNpub: context.recipientNpub
+    });
+  }
+  function setCommonAttributes(component, context) {
+    component.setAttribute("url", context.url);
     component.setAttribute("compact", "");
-    component.setAttribute("data-theme", slot.dataset.theme || "light");
-    if (slot.dataset.nostrYoutubeAction === "true") {
+    component.setAttribute("data-theme", context.theme);
+    if (context.kind === "youtube") {
       component.setAttribute("data-surface", "youtube");
     }
   }
@@ -28208,20 +28277,22 @@ ${url}`;
     const ComponentConstructor = registry?.get(tagName);
     return typeof ComponentConstructor === "function" ? new ComponentConstructor() : null;
   }
-  function hydrateActionSlot(slot, registry = globalThis.customElements) {
-    if (!slot || slot.dataset?.nostrYoutubeAction !== "true" && slot.dataset?.nostrCompetencyLike !== "true") {
-      return false;
-    }
+  function hydrateActionSlot(slot, suppliedContext, registry = globalThis.customElements) {
+    if (!slot) return false;
+    const context = normalizeContext(suppliedContext);
+    if (!context) return false;
     let like = slot.querySelector("nostr-like-button");
     if (!like) {
       like = constructRegisteredElement(registry, "nostr-like-button");
       if (!like) return false;
-      setCommonAttributes(like, slot);
+      bindContext(like, context);
+      setCommonAttributes(like, context);
       slot.appendChild(like);
     } else {
-      setCommonAttributes(like, slot);
+      bindContext(like, context);
+      setCommonAttributes(like, context);
     }
-    const recipientNpub = slot.dataset.recipientNpub || slot.dataset.zapRecipientNpub || "";
+    const recipientNpub = context.recipientNpub;
     let zap = slot.querySelector("nostr-zap-button");
     if (!recipientNpub) {
       zap?.remove();
@@ -28232,7 +28303,8 @@ ${url}`;
       zap = constructRegisteredElement(registry, "nostr-zap-button");
       if (!zap) return false;
     }
-    setCommonAttributes(zap, slot);
+    bindContext(zap, context);
+    setCommonAttributes(zap, context);
     zap.setAttribute("npub", recipientNpub);
     if (shouldAppendZap) slot.appendChild(zap);
     return true;
@@ -28247,7 +28319,7 @@ ${url}`;
     }
     const eventName = COMPONENT_HYDRATION_EVENT_PREFIX + channel;
     const handler = function(event) {
-      hydrateActionSlot(event.target, registry);
+      hydrateActionSlot(event.target, event.detail, registry);
     };
     root.addEventListener(eventName, handler, true);
     return Object.freeze({

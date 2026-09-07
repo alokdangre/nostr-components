@@ -18,9 +18,13 @@ import {
   LikeCountResult 
 } from './like-utils';
 import { ensureSignerForAction } from '../common/auth-onboarding';
-import { getRelayTransport } from '../common/relay-transport';
+import {
+  getRelayTransport,
+  hasInstalledRelayTransport,
+} from '../common/relay-transport';
 import { normalizeURL } from 'nostr-tools/utils';
 import { setTrustedInnerHTML } from '../common/trusted-html';
+import { getTrustedActionContext } from '../common/trusted-action-context';
 import {
   applyOptimisticLike,
   applyOptimisticUnlike,
@@ -112,7 +116,19 @@ export default class NostrLike extends NostrBaseComponent {
       return false;
     }
 
-    const urlAttr   = this.getAttribute('url');
+    if (
+      hasInstalledRelayTransport() &&
+      !getTrustedActionContext(this)
+    ) {
+      this.likeActionStatus.set(
+        NCStatus.Error,
+        'Untrusted extension action',
+      );
+      this.likeListStatus.set(NCStatus.Error, 'Untrusted extension action');
+      return false;
+    }
+
+    const urlAttr   = this.getActionUrl();
     const textAttr  = this.getAttribute('text');
     const tagName   = this.tagName.toLowerCase();
 
@@ -149,6 +165,12 @@ export default class NostrLike extends NostrBaseComponent {
 
   /** A host relay transport replaces only networking, not the component UI/signer. */
   protected async connectToNostr() {
+    if (
+      hasInstalledRelayTransport() &&
+      !getTrustedActionContext(this)
+    ) {
+      throw new Error('Untrusted extension action');
+    }
     if (!getRelayTransport()) {
       await super.connectToNostr();
       return;
@@ -167,9 +189,17 @@ export default class NostrLike extends NostrBaseComponent {
   /**
    * Lazy initializer for currentUrl - ensures it's set before like/unlike operations
    */
+  private getActionUrl(): string {
+    return (
+      getTrustedActionContext(this)?.url ||
+      this.getAttribute('url') ||
+      window.location.href
+    );
+  }
+
   private ensureCurrentUrl(): void {
     if (!this.currentUrl) {
-      this.currentUrl = normalizeURL(this.getAttribute('url') || window.location.href);
+      this.currentUrl = normalizeURL(this.getActionUrl());
     }
   }
 
@@ -178,7 +208,7 @@ export default class NostrLike extends NostrBaseComponent {
     try {
       await this.ensureNostrConnected();
       if (seq !== this.loadSeq) return;
-      this.currentUrl = normalizeURL(this.getAttribute('url') || window.location.href);
+      this.currentUrl = normalizeURL(this.getActionUrl());
       this.likeListStatus.set(NCStatus.Loading);
       this.render();
 

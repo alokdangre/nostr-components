@@ -144,6 +144,12 @@
     slot.setAttribute('data-directory-status', 'loading');
     slot.setAttribute('data-status-url', tweetInfo.canonicalUrl);
     slot.setAttribute('data-theme', theme);
+    extension.componentLoader?.registerAction?.(slot, {
+      kind: 'x',
+      url: tweetInfo.canonicalUrl,
+      theme: theme,
+      recipientNpub: null
+    });
     // X treats unhandled clicks inside a tweet as navigation. Contain clicks
     // across the full action slot, including loading and re-render gaps.
     slot.addEventListener('click', function (event) {
@@ -194,6 +200,7 @@
 
   function updateActionTheme(slot, theme) {
     slot.dataset.theme = theme;
+    extension.componentLoader?.updateAction?.(slot, { theme: theme });
     const component = slot.querySelector('nostr-like-button');
     if (component && component.getAttribute('data-theme') !== theme) {
       component.setAttribute('data-theme', theme);
@@ -228,6 +235,9 @@
     if (!identity) {
       slot.dataset.directoryStatus = 'invalid';
       delete slot.dataset.zapRecipientNpub;
+      extension.componentLoader?.updateAction?.(slot, {
+        recipientNpub: null
+      });
       if (slot.querySelector('nostr-like-button')) syncZapComponent(slot);
       return;
     }
@@ -247,8 +257,14 @@
       extension.url.isValidNpub(activeIdentity.npub)
     ) {
       slot.dataset.zapRecipientNpub = activeIdentity.npub;
+      extension.componentLoader?.updateAction?.(slot, {
+        recipientNpub: activeIdentity.npub
+      });
     } else {
       delete slot.dataset.zapRecipientNpub;
+      extension.componentLoader?.updateAction?.(slot, {
+        recipientNpub: null
+      });
     }
     if (slot.querySelector('nostr-like-button')) syncZapComponent(slot);
   }

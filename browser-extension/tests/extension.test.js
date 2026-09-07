@@ -7,6 +7,7 @@ import { finalizeEvent, nip19 } from 'nostr-tools';
 import { EventEmitter as CspEventEmitter } from '../src/csp-event-emitter.js';
 import { hydrateActionSlot } from '../src/component-hydrator.js';
 import { createMainRelayTransport } from '../src/main-relay-transport';
+import { getTrustedActionContext } from '../../src/common/trusted-action-context';
 
 await import('../lib/url.js');
 await import('../lib/zap-http.js');
@@ -199,11 +200,12 @@ describe('Zap action integration', function () {
 
   it('sets Zap attributes before connecting a newly constructed component', function () {
     const slot = new FakeElement('div');
+    const attackerNpub = nip19.npubEncode('2'.repeat(64));
     Object.assign(slot.dataset, {
       nostrYoutubeAction: 'true',
-      statusUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      theme: 'dark',
-      recipientNpub: recipientNpub
+      statusUrl: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+      theme: 'light',
+      recipientNpub: attackerNpub
     });
     const connectionSnapshots = [];
     const appendChild = slot.appendChild.bind(slot);
@@ -230,11 +232,20 @@ describe('Zap action integration', function () {
     ]);
 
     expect(
-      hydrateActionSlot(slot, {
-        get(tagName) {
-          return constructors.get(tagName);
+      hydrateActionSlot(
+        slot,
+        {
+          kind: 'youtube',
+          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          theme: 'dark',
+          recipientNpub: recipientNpub
+        },
+        {
+          get(tagName) {
+            return constructors.get(tagName);
+          }
         }
-      })
+      )
     ).toBe(true);
     expect(connectionSnapshots).toEqual([
       {
@@ -245,6 +256,17 @@ describe('Zap action integration', function () {
         npub: recipientNpub
       }
     ]);
+    const zap = slot.querySelector('nostr-zap-button');
+    zap.setAttribute('npub', attackerNpub);
+    zap.setAttribute(
+      'url',
+      'https://www.youtube.com/watch?v=aqz-KE-bpKQ'
+    );
+    expect(getTrustedActionContext(zap)).toEqual({
+      kind: 'youtube',
+      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      recipientNpub: recipientNpub
+    });
   });
 
   it('adds X Zap only for a verified zappable directory identity', function () {
@@ -1166,17 +1188,34 @@ describe('CSP-safe component and relay integration', function () {
 
     let dispatchedEvent;
     const like = {};
-    loader.hydrate({
+    const slot = {
+      dataset: {
+        statusUrl: 'https://x.com/mallory/status/99',
+        zapRecipientNpub: nip19.npubEncode('9'.repeat(64))
+      },
       dispatchEvent(event) {
         dispatchedEvent = event;
       },
       querySelector() {
         return like;
       }
+    };
+    loader.registerAction(slot, {
+      kind: 'x',
+      url: 'https://x.com/alice/status/42',
+      theme: 'dark',
+      recipientNpub: nip19.npubEncode('1'.repeat(64))
     });
+    loader.hydrate(slot);
     expect(dispatchedEvent.type).toBe(
       'nostr-components-hydrate:' + hydrationChannel
     );
+    expect(dispatchedEvent.detail).toEqual({
+      kind: 'x',
+      url: 'https://x.com/alice/status/42',
+      theme: 'dark',
+      recipientNpub: nip19.npubEncode('1'.repeat(64))
+    });
 
     extension.componentLoader = previousLoader;
   });
@@ -2141,11 +2180,20 @@ describe('YouTube component integration', function () {
       ['nostr-zap-button', RegisteredZap]
     ]);
     const hydrate = vi.fn(function (slot) {
-      return hydrateActionSlot(slot, {
-        get(tagName) {
-          return registry.get(tagName);
+      return hydrateActionSlot(
+        slot,
+        {
+          kind: 'youtube',
+          url: slot.dataset.statusUrl,
+          theme: slot.dataset.theme,
+          recipientNpub: slot.dataset.recipientNpub
+        },
+        {
+          get(tagName) {
+            return registry.get(tagName);
+          }
         }
-      });
+      );
     });
     extension.componentLoader = { ready: Promise.resolve(), hydrate: hydrate };
 

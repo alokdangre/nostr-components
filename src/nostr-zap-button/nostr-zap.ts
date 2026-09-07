@@ -11,8 +11,12 @@ import { fetchTotalZapAmount, ZapDetails } from './zap-utils';
 import { isValidUrl } from '../common/utils';
 import type { DialogComponent } from '../base/dialog-component/dialog-component';
 import { ensureSignerForAction } from '../common/auth-onboarding';
-import { getRelayTransport } from '../common/relay-transport';
+import {
+  getRelayTransport,
+  hasInstalledRelayTransport,
+} from '../common/relay-transport';
 import { setTrustedInnerHTML } from '../common/trusted-html';
+import { getTrustedActionContext } from '../common/trusted-action-context';
 
 /**
  * <nostr-zap-button>
@@ -90,6 +94,12 @@ export default class NostrZap extends NostrUserComponent {
 
   /** A host relay transport replaces only networking, not the component UI/signer. */
   protected async connectToNostr() {
+    if (
+      hasInstalledRelayTransport() &&
+      !getTrustedActionContext(this)
+    ) {
+      throw new Error('Untrusted extension action');
+    }
     if (!getRelayTransport()) {
       await super.connectToNostr();
       return;
@@ -106,6 +116,16 @@ export default class NostrZap extends NostrUserComponent {
 
   /** Protected methods */
   protected validateInputs(): boolean {
+    if (
+      hasInstalledRelayTransport() &&
+      !getTrustedActionContext(this)
+    ) {
+      this.zapActionStatus.set(NCStatus.Error, 'Untrusted extension action');
+      this.zapListStatus.set(NCStatus.Error, 'Untrusted extension action');
+      this.userStatus.set(NCStatus.Idle);
+      return false;
+    }
+
     if (!super.validateInputs()) {
       this.zapActionStatus.set(NCStatus.Idle);
       this.zapListStatus.set(NCStatus.Idle);
@@ -115,7 +135,8 @@ export default class NostrZap extends NostrUserComponent {
     const textAttr      = this.getAttribute("text");
     const amtAttr       = this.getAttribute("amount");
     const defaultAmtAttr= this.getAttribute("default-amount");
-    const urlAttr       = this.getAttribute("url");
+    const urlAttr       =
+      getTrustedActionContext(this)?.url || this.getAttribute("url");
     const tagName       = this.tagName.toLowerCase();
 
     let errorMessage: string | null = null;
@@ -182,14 +203,21 @@ export default class NostrZap extends NostrUserComponent {
         return;
       }
 
-      if (!this.user) {
+      const trustedContext = getTrustedActionContext(this);
+      if (hasInstalledRelayTransport() && !trustedContext) {
+        throw new Error('Untrusted extension action');
+      }
+      const npub =
+        trustedContext?.recipientNpub ||
+        this.user?.npub ||
+        this.getAttribute('npub');
+      if (!npub) {
         this.zapActionStatus.set(NCStatus.Error, "Could not resolve user to zap.");
         this.render();
         return;
       }
 
       const relays = this.getRelays().join(",");
-      const npub = this.user.npub;
 
       this.cachedAmountDialog = await openZapModal({
         npub,
@@ -216,7 +244,7 @@ export default class NostrZap extends NostrUserComponent {
           }
           return num;
         })(),
-        url: this.getAttribute("url") || undefined,
+        url: trustedContext?.url || this.getAttribute("url") || undefined,
         anon: false,
       });
       this.zapActionStatus.set(NCStatus.Ready);

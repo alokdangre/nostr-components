@@ -52,6 +52,10 @@ export function installRelayTransport(
   installedRelayTransport = transport;
 }
 
+export function hasInstalledRelayTransport(): boolean {
+  return installedRelayTransport !== null;
+}
+
 /** Optional host transport used when page CSP prevents direct relay sockets. */
 export function getRelayTransport(): NostrRelayTransport | null {
   if (installedRelayTransport) return installedRelayTransport;
