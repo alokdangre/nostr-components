@@ -499,13 +499,14 @@ export const fetchTotalZapAmount = async ({
       '#p': [pubkey],
       limit: 1000,
     };
+    const expectedATag = url ? buildUrlATag(pubkey, url) : undefined;
 
     // When a URL is provided, filter at the relay level using the #a tag.
     // The a tag value (39735:pubkey:url) is copied from the zap request to the
     // zap receipt by NIP-57-compliant relays, so only URL-specific receipts
     // are returned — no client-side description parsing needed for filtering.
-    if (url) {
-      filter['#a'] = [buildUrlATag(pubkey, url)];
+    if (expectedATag) {
+      filter['#a'] = [expectedATag];
     }
 
     const events = transport
@@ -516,6 +517,7 @@ export const fetchTotalZapAmount = async ({
       const validated = validateZapReceipt(event, {
         recipientPubkey: pubkey,
         provider,
+        expectedATag,
       });
       if (!validated.ok) continue;
 
@@ -547,17 +549,22 @@ export const listenForZapReceipt = ({
   receiversPubKey,
   invoice,
   provider,
+  url,
   onSuccess,
 }: {
   relays: string[];
   receiversPubKey: string;
   invoice: string;
   provider: ZapProviderInfo;
+  url?: string;
   onSuccess: () => void;
 }) => {
   const normalizedRelays = Array.from(new Set(relays));
   const since = Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000); // current time - 24 hours
   const transport = getRelayTransport();
+  const expectedATag = url
+    ? buildUrlATag(receiversPubKey, url)
+    : undefined;
 
   if (transport) {
     let stopped = false;
@@ -586,6 +593,8 @@ export const listenForZapReceipt = ({
           const validated = validateZapReceipt(event, {
             recipientPubkey: receiversPubKey,
             provider,
+            expectedATag,
+            expectedBolt11: invoice,
           });
           if (!validated.ok) continue;
           stopped = true;
@@ -629,6 +638,8 @@ export const listenForZapReceipt = ({
         const validated = validateZapReceipt(event, {
           recipientPubkey: receiversPubKey,
           provider,
+          expectedATag,
+          expectedBolt11: invoice,
         });
         if (!validated.ok) return;
 

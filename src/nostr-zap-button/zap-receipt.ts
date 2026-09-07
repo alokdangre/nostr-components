@@ -24,9 +24,25 @@ export type ZapReceiptValidationResult =
       reason: string;
     };
 
-function getTagValue(tags: string[][] | undefined, name: string): string | undefined {
-  const tag = tags?.find((t) => t[0] === name && t[1]);
-  return tag?.[1];
+function getTagEntries(
+  tags: string[][] | undefined,
+  name: string,
+): string[][] {
+  return Array.isArray(tags)
+    ? tags.filter((tag) => Array.isArray(tag) && tag[0] === name)
+    : [];
+}
+
+function getUniqueTagValue(
+  tags: string[][] | undefined,
+  name: string,
+): string | null {
+  const matches = getTagEntries(tags, name);
+  return matches.length === 1 &&
+    typeof matches[0][1] === 'string' &&
+    matches[0][1].length > 0
+    ? matches[0][1]
+    : null;
 }
 
 /**
@@ -145,6 +161,8 @@ export function validateZapReceipt(
   opts: {
     recipientPubkey: string;
     provider: ZapProviderInfo;
+    expectedATag?: string;
+    expectedBolt11?: string;
   },
 ): ZapReceiptValidationResult {
   if (receipt.kind !== 9735) {
@@ -162,12 +180,26 @@ export function validateZapReceipt(
     return { ok: false, reason: 'receipt-pubkey-mismatch' };
   }
 
-  const receiptP = getTagValue(verifiedReceipt.tags, 'p');
+  const receiptPTags = getTagEntries(verifiedReceipt.tags, 'p');
+  const receiptP = getUniqueTagValue(verifiedReceipt.tags, 'p');
+  if (receiptPTags.length > 1) {
+    return { ok: false, reason: 'duplicate-receipt-p' };
+  }
   if (!receiptP || receiptP.toLowerCase() !== opts.recipientPubkey.toLowerCase()) {
     return { ok: false, reason: 'receipt-p-mismatch' };
   }
 
-  const description = getTagValue(verifiedReceipt.tags, 'description');
+  const descriptionTags = getTagEntries(
+    verifiedReceipt.tags,
+    'description',
+  );
+  const description = getUniqueTagValue(
+    verifiedReceipt.tags,
+    'description',
+  );
+  if (descriptionTags.length > 1) {
+    return { ok: false, reason: 'duplicate-description' };
+  }
   if (!description) {
     return { ok: false, reason: 'missing-description' };
   }
@@ -194,14 +226,25 @@ export function validateZapReceipt(
     return { ok: false, reason: 'zap-request-sig' };
   }
 
-  const requestP = getTagValue(zapRequest.tags, 'p');
+  const requestPTags = getTagEntries(zapRequest.tags, 'p');
+  const requestP = getUniqueTagValue(zapRequest.tags, 'p');
+  if (requestPTags.length > 1) {
+    return { ok: false, reason: 'duplicate-zap-request-p' };
+  }
   if (!requestP || requestP.toLowerCase() !== opts.recipientPubkey.toLowerCase()) {
     return { ok: false, reason: 'zap-request-p-mismatch' };
   }
 
-  const bolt11 = getTagValue(verifiedReceipt.tags, 'bolt11');
+  const bolt11Tags = getTagEntries(verifiedReceipt.tags, 'bolt11');
+  const bolt11 = getUniqueTagValue(verifiedReceipt.tags, 'bolt11');
+  if (bolt11Tags.length > 1) {
+    return { ok: false, reason: 'duplicate-bolt11' };
+  }
   if (!bolt11) {
     return { ok: false, reason: 'missing-bolt11' };
+  }
+  if (opts.expectedBolt11 && bolt11 !== opts.expectedBolt11) {
+    return { ok: false, reason: 'bolt11-mismatch' };
   }
 
   const invoiceAmountMsats = getBolt11AmountMsats(bolt11);
@@ -209,7 +252,14 @@ export function validateZapReceipt(
     return { ok: false, reason: 'invalid-bolt11-amount' };
   }
 
-  const amountTag = getTagValue(zapRequest.tags, 'amount');
+  const amountTags = getTagEntries(zapRequest.tags, 'amount');
+  if (amountTags.length > 1) {
+    return { ok: false, reason: 'duplicate-amount' };
+  }
+  const amountTag = getUniqueTagValue(zapRequest.tags, 'amount');
+  if (amountTags.length === 1 && !amountTag) {
+    return { ok: false, reason: 'invalid-amount' };
+  }
   if (amountTag) {
     const requestAmount = Number(amountTag);
     if (!Number.isFinite(requestAmount) || requestAmount !== invoiceAmountMsats) {
@@ -217,12 +267,40 @@ export function validateZapReceipt(
     }
   }
 
-  const requestLnurl = getTagValue(zapRequest.tags, 'lnurl');
+  const lnurlTags = getTagEntries(zapRequest.tags, 'lnurl');
+  if (lnurlTags.length > 1) {
+    return { ok: false, reason: 'duplicate-lnurl' };
+  }
+  const requestLnurl = getUniqueTagValue(zapRequest.tags, 'lnurl');
+  if (lnurlTags.length === 1 && !requestLnurl) {
+    return { ok: false, reason: 'lnurl-mismatch' };
+  }
   if (requestLnurl) {
     const normalized = normalizeLnurlTag(requestLnurl);
     if (!normalized || normalized !== opts.provider.lnurl) {
       return { ok: false, reason: 'lnurl-mismatch' };
     }
+  }
+
+  const receiptATags = getTagEntries(verifiedReceipt.tags, 'a');
+  const requestATags = getTagEntries(zapRequest.tags, 'a');
+  if (receiptATags.length > 1 || requestATags.length > 1) {
+    return { ok: false, reason: 'duplicate-a' };
+  }
+  const receiptA = getUniqueTagValue(verifiedReceipt.tags, 'a');
+  const requestA = getUniqueTagValue(zapRequest.tags, 'a');
+  if (opts.expectedATag) {
+    if (
+      receiptA !== opts.expectedATag ||
+      requestA !== opts.expectedATag
+    ) {
+      return { ok: false, reason: 'a-mismatch' };
+    }
+  } else if (
+    receiptATags.length !== requestATags.length ||
+    receiptA !== requestA
+  ) {
+    return { ok: false, reason: 'a-mismatch' };
   }
 
   return {

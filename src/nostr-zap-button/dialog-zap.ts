@@ -183,6 +183,7 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
       receiversPubKey: npubHex,
       invoice,
       provider,
+      url,
       onSuccess: markSuccess
     });
     return invoice;

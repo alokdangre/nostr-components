@@ -24,8 +24,13 @@ const PROVIDER: ZapProviderInfo = {
   callback: 'https://ln.example/callback',
   nostrPubkey: PROVIDER_PK,
 };
+const EXPECTED_URL = 'https://x.com/alice/status/42';
+const EXPECTED_A_TAG = `39735:${RECIPIENT_PK}:${EXPECTED_URL}`;
 
-function makeZapRequest(amountMsats = BOLT11_AMOUNT_MSATS) {
+function makeZapRequest(
+  amountMsats = BOLT11_AMOUNT_MSATS,
+  extraTags: string[][] = [],
+) {
   return finalizeEvent(
     {
       kind: 9734,
@@ -35,6 +40,7 @@ function makeZapRequest(amountMsats = BOLT11_AMOUNT_MSATS) {
         ['p', RECIPIENT_PK],
         ['amount', String(amountMsats)],
         ['relays', 'wss://relay.example'],
+        ...extraTags,
       ],
     },
     SENDER_SK,
@@ -44,13 +50,15 @@ function makeZapRequest(amountMsats = BOLT11_AMOUNT_MSATS) {
 function makeValidReceipt(
   amountMsats = BOLT11_AMOUNT_MSATS,
   mutateTags?: (tags: string[][]) => string[][],
+  requestExtraTags: string[][] = [],
 ) {
-  const zapRequest = makeZapRequest(amountMsats);
+  const zapRequest = makeZapRequest(amountMsats, requestExtraTags);
   const baseTags: string[][] = [
     ['p', RECIPIENT_PK],
     ['P', zapRequest.pubkey],
     ['bolt11', BOLT11_20U],
     ['description', JSON.stringify(zapRequest)],
+    ...requestExtraTags.filter(([name]) => name === 'a'),
   ];
   return finalizeEvent(
     {
@@ -163,6 +171,49 @@ describe('validateZapReceipt', () => {
     if (!result.ok) expect(result.reason).toBe('missing-description');
   });
 
+  it('rejects a missing receipt p tag', () => {
+    const receipt = makeValidReceipt(BOLT11_AMOUNT_MSATS, (tags) =>
+      tags.filter(([name]) => name !== 'p'),
+    );
+    const result = validateZapReceipt(receipt, {
+      recipientPubkey: RECIPIENT_PK,
+      provider: PROVIDER,
+    });
+    expect(result).toEqual({ ok: false, reason: 'receipt-p-mismatch' });
+  });
+
+  it.each([
+    ['p', 'duplicate-receipt-p'],
+    ['description', 'duplicate-description'],
+    ['bolt11', 'duplicate-bolt11'],
+  ])('rejects duplicate receipt %s tags', (name, reason) => {
+    const receipt = makeValidReceipt(BOLT11_AMOUNT_MSATS, (tags) => {
+      const duplicate = tags.find(([tagName]) => tagName === name)!;
+      return [...tags, [...duplicate]];
+    });
+    const result = validateZapReceipt(receipt, {
+      recipientPubkey: RECIPIENT_PK,
+      provider: PROVIDER,
+    });
+    expect(result).toEqual({ ok: false, reason });
+  });
+
+  it('rejects duplicate embedded zap-request p tags', () => {
+    const receipt = makeValidReceipt(
+      BOLT11_AMOUNT_MSATS,
+      undefined,
+      [['p', RECIPIENT_PK]],
+    );
+    const result = validateZapReceipt(receipt, {
+      recipientPubkey: RECIPIENT_PK,
+      provider: PROVIDER,
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: 'duplicate-zap-request-p',
+    });
+  });
+
   it('rejects invalid description JSON', () => {
     const receipt = makeValidReceipt(BOLT11_AMOUNT_MSATS, (tags) =>
       tags.map((tag) => (tag[0] === 'description' ? ['description', '{not-json'] : tag)),
@@ -262,6 +313,15 @@ describe('validateZapReceipt', () => {
     if (!result.ok) expect(result.reason).toBe('missing-bolt11');
   });
 
+  it('requires the exact invoice when validating payment completion', () => {
+    const result = validateZapReceipt(makeValidReceipt(), {
+      recipientPubkey: RECIPIENT_PK,
+      provider: PROVIDER,
+      expectedBolt11: 'lnbc1different',
+    });
+    expect(result).toEqual({ ok: false, reason: 'bolt11-mismatch' });
+  });
+
   it('rejects invalid bolt11 amount', () => {
     const receipt = makeValidReceipt(BOLT11_AMOUNT_MSATS, (tags) =>
       tags.map((tag) => (tag[0] === 'bolt11' ? ['bolt11', 'not-a-bolt11'] : tag)),
@@ -347,5 +407,53 @@ describe('validateZapReceipt', () => {
       provider: PROVIDER,
     });
     expect(result.ok).toBe(true);
+  });
+
+  it('cryptographically binds URL zaps to matching receipt and request a tags', () => {
+    const result = validateZapReceipt(
+      makeValidReceipt(
+        BOLT11_AMOUNT_MSATS,
+        undefined,
+        [['a', EXPECTED_A_TAG]],
+      ),
+      {
+        recipientPubkey: RECIPIENT_PK,
+        provider: PROVIDER,
+        expectedATag: EXPECTED_A_TAG,
+      },
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it.each([
+    ['missing receipt a', (tags: string[][]) =>
+      tags.filter(([name]) => name !== 'a'), [['a', EXPECTED_A_TAG]]],
+    ['missing request a', (tags: string[][]) =>
+      [...tags, ['a', EXPECTED_A_TAG]], []],
+    ['mismatched a', undefined, [[
+      'a',
+      `39735:${RECIPIENT_PK}:https://x.com/alice/status/99`,
+    ]]],
+    ['duplicate a', undefined, [
+      ['a', EXPECTED_A_TAG],
+      ['a', EXPECTED_A_TAG],
+    ]],
+  ])('rejects URL attribution with %s', (_case, mutateTags, requestTags) => {
+    const result = validateZapReceipt(
+      makeValidReceipt(
+        BOLT11_AMOUNT_MSATS,
+        mutateTags,
+        requestTags,
+      ),
+      {
+        recipientPubkey: RECIPIENT_PK,
+        provider: PROVIDER,
+        expectedATag: EXPECTED_A_TAG,
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(['a-mismatch', 'duplicate-a']).toContain(result.reason);
+    }
   });
 });
