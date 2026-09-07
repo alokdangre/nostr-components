@@ -25,6 +25,7 @@ import {
 import { normalizeURL } from 'nostr-tools/utils';
 import { setTrustedInnerHTML } from '../common/trusted-html';
 import { getTrustedActionContext } from '../common/trusted-action-context';
+import { isTrustedUserEvent } from '../common/trusted-user-activation';
 import {
   applyOptimisticLike,
   applyOptimisticUnlike,
@@ -288,7 +289,7 @@ export default class NostrLike extends NostrBaseComponent {
     this.queueAuthoritativeCountResync();
   }
 
-  private async handleLikeClick() {
+  async #handleLikeClick() {
     if (this.likeActionStatus.get() === NCStatus.Loading) return;
 
     // Ensure currentUrl is set before proceeding
@@ -361,10 +362,10 @@ export default class NostrLike extends NostrBaseComponent {
         }
 
         // Proceed with unlike
-        await this.handleUnlike(targetUrl);
+        await this.#handleUnlike(targetUrl);
       } else {
         // Proceed with like
-        await this.handleLike(targetUrl);
+        await this.#handleLike(targetUrl);
       }
     } catch (error) {
       console.error('[NostrLike] Failed to check user like status:', error);
@@ -374,7 +375,7 @@ export default class NostrLike extends NostrBaseComponent {
     }
   }
 
-  private async handleLike(targetUrl?: string) {
+  async #handleLike(targetUrl?: string) {
     // Ensure currentUrl is set before proceeding
     this.ensureCurrentUrl();
     const likeUrl = targetUrl ?? this.currentUrl;
@@ -433,7 +434,7 @@ export default class NostrLike extends NostrBaseComponent {
     }
   }
 
-  private async handleUnlike(targetUrl?: string) {
+  async #handleUnlike(targetUrl?: string) {
     // Ensure currentUrl is set before proceeding
     this.ensureCurrentUrl();
     const unlikeUrl = targetUrl ?? this.currentUrl;
@@ -492,7 +493,7 @@ export default class NostrLike extends NostrBaseComponent {
     }
   }
 
-  private async handleCountClick() {
+  async #handleCountClick() {
     if (this.likeCount === 0 || !this.cachedLikeDetails) {
       return;
     }
@@ -510,7 +511,7 @@ export default class NostrLike extends NostrBaseComponent {
     }
   }
 
-  private async handleHelpClick() {
+  async #handleHelpClick() {
     try {
       await showHelpDialog(this.theme === 'dark' ? 'dark' : 'light');
     } catch (error) {
@@ -520,28 +521,32 @@ export default class NostrLike extends NostrBaseComponent {
 
   private attachDelegatedListeners() {
     this.delegateEvent('click', '.nostr-like-button', (e) => {
+      if (!isTrustedUserEvent(e)) return;
       e.preventDefault?.();
       e.stopPropagation?.();
-      void this.handleLikeClick();
+      void this.#handleLikeClick();
     });
 
     this.delegateEvent('click', '.like-count.clickable', (e) => {
+      if (!isTrustedUserEvent(e)) return;
       e.preventDefault?.();
       e.stopPropagation?.();
-      void this.handleCountClick();
+      void this.#handleCountClick();
     });
 
     this.delegateEvent('keydown', '.like-count.clickable', (e: KeyboardEvent) => {
+      if (!isTrustedUserEvent(e)) return;
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
       e.stopPropagation();
-      void this.handleCountClick();
+      void this.#handleCountClick();
     });
 
     this.delegateEvent('click', '.help-icon', (e) => {
+      if (!isTrustedUserEvent(e)) return;
       e.preventDefault?.();
       e.stopPropagation?.();
-      this.handleHelpClick();
+      void this.#handleHelpClick();
     });
   }
 

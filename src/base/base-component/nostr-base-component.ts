@@ -3,6 +3,10 @@
 import { NostrService } from '../../common/nostr-service';
 import { Theme } from '../../common/types';
 import { parseRelays, parseTheme, isValidRelayUrl } from '../../common/utils';
+import {
+  addNativeEventListener,
+  removeNativeEventListener,
+} from '../../common/trusted-user-activation';
 
 export enum NCStatus {
   Idle,      // 0
@@ -84,7 +88,12 @@ export abstract class NostrBaseComponent extends HTMLElement {
     // Remove all delegated event listeners to prevent memory leaks
     if (this.shadowRoot && this._delegatedListeners.length > 0) {
       for (const { type, handler, useCapture } of this._delegatedListeners) {
-        this.shadowRoot.removeEventListener(type, handler, useCapture);
+        removeNativeEventListener(
+          this.shadowRoot,
+          type,
+          handler,
+          useCapture,
+        );
       }
       this._delegatedListeners = [];
     }
@@ -317,7 +326,7 @@ export abstract class NostrBaseComponent extends HTMLElement {
     };
 
     // Add listener (using bubble phase by default)
-    root.addEventListener(type, wrappedHandler, false);
+    addNativeEventListener(root, type, wrappedHandler, false);
 
     // Store reference for cleanup
     this._delegatedListeners.push({

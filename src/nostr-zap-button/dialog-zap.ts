@@ -6,6 +6,10 @@ import type { DialogComponent } from '../base/dialog-component/dialog-component'
 import { getDialogStyles } from './dialog-zap-style';
 import { decodeNpub } from '../common/utils';
 import { setTrustedInnerHTML } from '../common/trusted-html';
+import {
+  addNativeEventListener,
+  isTrustedUserEvent,
+} from '../common/trusted-user-activation';
 
 /**
  * Modal dialog helper for <nostr-zap> component.
@@ -446,22 +450,27 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
     addCommentBtn.disabled = false;
   });
 
-  (dialog.querySelector('.cta-btn') as HTMLButtonElement).onclick = async () => {
-    if (!currentInvoice) return;
-    // try WebLN first
-    if (window.webln) {
-      try {
-        await window.webln.enable();
-        await window.webln.sendPayment(currentInvoice);
-        markSuccess();
-        return;
-      } catch (e) {
-        console.error('Nostr-Components: Zap button: webln payment failed', e);
-        dialog.close();
+  addNativeEventListener(
+    dialog.querySelector('.cta-btn') as HTMLButtonElement,
+    'click',
+    async (event) => {
+      if (!isTrustedUserEvent(event)) return;
+      if (!currentInvoice) return;
+      // try WebLN first
+      if (window.webln) {
+        try {
+          await window.webln.enable();
+          await window.webln.sendPayment(currentInvoice);
+          markSuccess();
+          return;
+        } catch (e) {
+          console.error('Nostr-Components: Zap button: webln payment failed', e);
+          dialog.close();
+        }
       }
-    }
-    window.location.href = `lightning:${currentInvoice}`;
-  };
+      window.location.href = `lightning:${currentInvoice}`;
+    },
+  );
 
   function markSuccess() {
     dialog.classList.add('success');

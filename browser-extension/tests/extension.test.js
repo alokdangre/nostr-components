@@ -1265,6 +1265,10 @@ describe('CSP-safe component and relay integration', function () {
     expect(componentBundle).not.toMatch(
       /globalThis\.__nostrComponentsRelayTransport\s*=/,
     );
+    expect(componentBundle).not.toMatch(/\basync handleLikeClick\s*\(/);
+    expect(componentBundle).not.toMatch(/\basync handleZapClick\s*\(/);
+    expect(componentBundle).not.toContain('this.handleLike(');
+    expect(componentBundle).not.toContain('this.handleZapClick(');
     expect(componentBundle).not.toContain('__nostrComponentsTrustedHTMLPolicy');
     expect(componentBundle).toContain('factory.createPolicy(POLICY_NAME');
     expect(componentLoader).toContain('nostr-components-hydrate:');

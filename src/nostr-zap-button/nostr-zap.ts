@@ -17,6 +17,7 @@ import {
 } from '../common/relay-transport';
 import { setTrustedInnerHTML } from '../common/trusted-html';
 import { getTrustedActionContext } from '../common/trusted-action-context';
+import { isTrustedUserEvent } from '../common/trusted-user-activation';
 
 /**
  * <nostr-zap-button>
@@ -175,7 +176,7 @@ export default class NostrZap extends NostrUserComponent {
   }
 
   /** Private functions */
-  private async handleZapClick() {
+  async #handleZapClick() {
     if (this.userStatus.get() !== NCStatus.Ready) return;
     if (this.zapActionStatus.get() === NCStatus.Loading) return;
 
@@ -256,7 +257,7 @@ export default class NostrZap extends NostrUserComponent {
     }
   }
 
-  private async handleHelpClick() {
+  async #handleHelpClick() {
     try {
       await showHelpDialog(this.theme === 'dark' ? 'dark' : 'light');
     } catch (error) {
@@ -264,7 +265,7 @@ export default class NostrZap extends NostrUserComponent {
     }
   }
 
-  private async handleZappersClick() {
+  async #handleZappersClick() {
     if (this.cachedZapDetails.length === 0) {
       return; // No zaps to show
     }
@@ -282,28 +283,32 @@ export default class NostrZap extends NostrUserComponent {
 
   private attachDelegatedListeners() {
     this.delegateEvent('click', '.nostr-zap-button', (e) => {
+      if (!isTrustedUserEvent(e)) return;
       e.preventDefault?.();
       e.stopPropagation?.();
-      void this.handleZapClick();
+      void this.#handleZapClick();
     });
 
     this.delegateEvent('click', '.help-icon', (e) => {
+      if (!isTrustedUserEvent(e)) return;
       e.preventDefault?.();
       e.stopPropagation?.();
-      this.handleHelpClick();
+      void this.#handleHelpClick();
     });
 
     this.delegateEvent('click', '.total-zap-amount', (e) => {
+      if (!isTrustedUserEvent(e)) return;
       e.preventDefault?.();
       e.stopPropagation?.();
-      void this.handleZappersClick();
+      void this.#handleZappersClick();
     });
 
     this.delegateEvent('keydown', '.total-zap-amount.clickable', (e: KeyboardEvent) => {
+      if (!isTrustedUserEvent(e)) return;
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
       e.stopPropagation();
-      void this.handleZappersClick();
+      void this.#handleZappersClick();
     });
   }
 

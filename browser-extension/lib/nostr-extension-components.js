@@ -24289,6 +24289,39 @@ ${url}`;
 
   // src/base/base-component/nostr-base-component.ts
   init_utils8();
+
+  // src/common/trusted-user-activation.ts
+  var eventTargetPrototype = globalThis.EventTarget?.prototype;
+  var nativeAddEventListener = eventTargetPrototype?.addEventListener ? Function.call.bind(eventTargetPrototype.addEventListener) : null;
+  var nativeRemoveEventListener = eventTargetPrototype?.removeEventListener ? Function.call.bind(eventTargetPrototype.removeEventListener) : null;
+  var trustedGetter = Object.getOwnPropertyDescriptor(
+    globalThis.Event?.prototype || {},
+    "isTrusted"
+  )?.get;
+  var readTrusted = trustedGetter ? Function.call.bind(trustedGetter) : null;
+  function isTrustedUserEvent(event) {
+    try {
+      return readTrusted ? readTrusted(event) === true : event.isTrusted === true;
+    } catch {
+      return false;
+    }
+  }
+  function addNativeEventListener(target, type, listener, options) {
+    if (nativeAddEventListener) {
+      nativeAddEventListener(target, type, listener, options);
+    } else {
+      target.addEventListener(type, listener, options);
+    }
+  }
+  function removeNativeEventListener(target, type, listener, options) {
+    if (nativeRemoveEventListener) {
+      nativeRemoveEventListener(target, type, listener, options);
+    } else {
+      target.removeEventListener(type, listener, options);
+    }
+  }
+
+  // src/base/base-component/nostr-base-component.ts
   var NCStatus = /* @__PURE__ */ ((NCStatus2) => {
     NCStatus2[NCStatus2["Idle"] = 0] = "Idle";
     NCStatus2[NCStatus2["Loading"] = 1] = "Loading";
@@ -24331,7 +24364,12 @@ ${url}`;
     disconnectedCallback() {
       if (this.shadowRoot && this._delegatedListeners.length > 0) {
         for (const { type, handler, useCapture } of this._delegatedListeners) {
-          this.shadowRoot.removeEventListener(type, handler, useCapture);
+          removeNativeEventListener(
+            this.shadowRoot,
+            type,
+            handler,
+            useCapture
+          );
         }
         this._delegatedListeners = [];
       }
@@ -24517,7 +24555,7 @@ ${url}`;
           handler(e);
         }
       };
-      root.addEventListener(type, wrappedHandler, false);
+      addNativeEventListener(root, type, wrappedHandler, false);
       this._delegatedListeners.push({
         type,
         handler: wrappedHandler,
@@ -26111,7 +26149,7 @@ ${url}`;
       this.likeActionStatus.set(3 /* Error */, errorMessage);
       this.queueAuthoritativeCountResync();
     }
-    async handleLikeClick() {
+    async #handleLikeClick() {
       if (this.likeActionStatus.get() === 1 /* Loading */) return;
       this.ensureCurrentUrl();
       const targetUrl = this.currentUrl;
@@ -26160,9 +26198,9 @@ ${url}`;
             this.render();
             return;
           }
-          await this.handleUnlike(targetUrl);
+          await this.#handleUnlike(targetUrl);
         } else {
-          await this.handleLike(targetUrl);
+          await this.#handleLike(targetUrl);
         }
       } catch (error) {
         console.error("[NostrLike] Failed to check user like status:", error);
@@ -26171,7 +26209,7 @@ ${url}`;
         this.render();
       }
     }
-    async handleLike(targetUrl) {
+    async #handleLike(targetUrl) {
       this.ensureCurrentUrl();
       const likeUrl = targetUrl ?? this.currentUrl;
       if (!likeUrl) {
@@ -26215,7 +26253,7 @@ ${url}`;
         this.render();
       }
     }
-    async handleUnlike(targetUrl) {
+    async #handleUnlike(targetUrl) {
       this.ensureCurrentUrl();
       const unlikeUrl = targetUrl ?? this.currentUrl;
       if (!unlikeUrl) {
@@ -26259,7 +26297,7 @@ ${url}`;
         this.render();
       }
     }
-    async handleCountClick() {
+    async #handleCountClick() {
       if (this.likeCount === 0 || !this.cachedLikeDetails) {
         return;
       }
@@ -26274,7 +26312,7 @@ ${url}`;
         console.error("[NostrLike] Error opening likers dialog:", error);
       }
     }
-    async handleHelpClick() {
+    async #handleHelpClick() {
       try {
         await showHelpDialog(this.theme === "dark" ? "dark" : "light");
       } catch (error) {
@@ -26283,25 +26321,29 @@ ${url}`;
     }
     attachDelegatedListeners() {
       this.delegateEvent("click", ".nostr-like-button", (e) => {
+        if (!isTrustedUserEvent(e)) return;
         e.preventDefault?.();
         e.stopPropagation?.();
-        void this.handleLikeClick();
+        void this.#handleLikeClick();
       });
       this.delegateEvent("click", ".like-count.clickable", (e) => {
+        if (!isTrustedUserEvent(e)) return;
         e.preventDefault?.();
         e.stopPropagation?.();
-        void this.handleCountClick();
+        void this.#handleCountClick();
       });
       this.delegateEvent("keydown", ".like-count.clickable", (e) => {
+        if (!isTrustedUserEvent(e)) return;
         if (e.key !== "Enter" && e.key !== " ") return;
         e.preventDefault();
         e.stopPropagation();
-        void this.handleCountClick();
+        void this.#handleCountClick();
       });
       this.delegateEvent("click", ".help-icon", (e) => {
+        if (!isTrustedUserEvent(e)) return;
         e.preventDefault?.();
         e.stopPropagation?.();
-        this.handleHelpClick();
+        void this.#handleHelpClick();
       });
     }
     renderContent() {
@@ -26954,21 +26996,26 @@ ${url}`;
       await refreshUI(dialog);
       addCommentBtn.disabled = false;
     });
-    dialog.querySelector(".cta-btn").onclick = async () => {
-      if (!currentInvoice) return;
-      if (window.webln) {
-        try {
-          await window.webln.enable();
-          await window.webln.sendPayment(currentInvoice);
-          markSuccess();
-          return;
-        } catch (e) {
-          console.error("Nostr-Components: Zap button: webln payment failed", e);
-          dialog.close();
+    addNativeEventListener(
+      dialog.querySelector(".cta-btn"),
+      "click",
+      async (event) => {
+        if (!isTrustedUserEvent(event)) return;
+        if (!currentInvoice) return;
+        if (window.webln) {
+          try {
+            await window.webln.enable();
+            await window.webln.sendPayment(currentInvoice);
+            markSuccess();
+            return;
+          } catch (e) {
+            console.error("Nostr-Components: Zap button: webln payment failed", e);
+            dialog.close();
+          }
         }
+        window.location.href = `lightning:${currentInvoice}`;
       }
-      window.location.href = `lightning:${currentInvoice}`;
-    };
+    );
     function markSuccess() {
       dialog.classList.add("success");
       const overlay = dialog.querySelector(".success-overlay");
@@ -28133,7 +28180,7 @@ ${url}`;
       return true;
     }
     /** Private functions */
-    async handleZapClick() {
+    async #handleZapClick() {
       if (this.userStatus.get() !== 2 /* Ready */) return;
       if (this.zapActionStatus.get() === 1 /* Loading */) return;
       this.zapActionStatus.set(1 /* Loading */);
@@ -28203,14 +28250,14 @@ ${url}`;
         this.render();
       }
     }
-    async handleHelpClick() {
+    async #handleHelpClick() {
       try {
         await showHelpDialog2(this.theme === "dark" ? "dark" : "light");
       } catch (error) {
         console.error("Error showing help dialog:", error);
       }
     }
-    async handleZappersClick() {
+    async #handleZappersClick() {
       if (this.cachedZapDetails.length === 0) {
         return;
       }
@@ -28226,25 +28273,29 @@ ${url}`;
     }
     attachDelegatedListeners() {
       this.delegateEvent("click", ".nostr-zap-button", (e) => {
+        if (!isTrustedUserEvent(e)) return;
         e.preventDefault?.();
         e.stopPropagation?.();
-        void this.handleZapClick();
+        void this.#handleZapClick();
       });
       this.delegateEvent("click", ".help-icon", (e) => {
+        if (!isTrustedUserEvent(e)) return;
         e.preventDefault?.();
         e.stopPropagation?.();
-        this.handleHelpClick();
+        void this.#handleHelpClick();
       });
       this.delegateEvent("click", ".total-zap-amount", (e) => {
+        if (!isTrustedUserEvent(e)) return;
         e.preventDefault?.();
         e.stopPropagation?.();
-        void this.handleZappersClick();
+        void this.#handleZappersClick();
       });
       this.delegateEvent("keydown", ".total-zap-amount.clickable", (e) => {
+        if (!isTrustedUserEvent(e)) return;
         if (e.key !== "Enter" && e.key !== " ") return;
         e.preventDefault();
         e.stopPropagation();
-        void this.handleZappersClick();
+        void this.#handleZappersClick();
       });
     }
     async updateZapCount() {
@@ -28322,8 +28373,8 @@ ${url}`;
   var nativeAppendChild = elementPrototype?.appendChild;
   var nativeRemove = elementPrototype?.remove;
   var nativeSetAttribute = elementPrototype?.setAttribute;
-  var eventTargetPrototype = globalThis.EventTarget?.prototype;
-  var nativeAddEventListener = eventTargetPrototype?.addEventListener;
+  var eventTargetPrototype2 = globalThis.EventTarget?.prototype;
+  var nativeAddEventListener2 = eventTargetPrototype2?.addEventListener;
   var watchedSlots = /* @__PURE__ */ new WeakSet();
   var isWatchedSlot = watchedSlots.has.bind(watchedSlots);
   var rememberWatchedSlot = watchedSlots.add.bind(watchedSlots);
@@ -28378,8 +28429,8 @@ ${url}`;
       }
       if (target === slot) discardOwnedChildren(slot);
     };
-    if (nativeAddEventListener) {
-      nativeAddEventListener.call(slot, eventName, revoke);
+    if (nativeAddEventListener2) {
+      nativeAddEventListener2.call(slot, eventName, revoke);
     } else {
       slot.addEventListener(eventName, revoke);
     }
