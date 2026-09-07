@@ -7922,11 +7922,18 @@
       if (!ACTION_ID_PATTERN.test(String(actionId || "")) || !context || context.kind !== "x" && context.kind !== "youtube" || !isAllowedContentUrl(context.url)) {
         throw new Error("Invalid isolated action context");
       }
-      actionContexts.set(actionId, {
+      const next = {
         kind: context.kind,
         url: context.url,
         recipientPubkey: decodeRecipientNpub(context.recipientNpub)
-      });
+      };
+      const current = actionContexts.get(actionId);
+      if (current && current.kind === next.kind && current.url === next.url && current.recipientPubkey === next.recipientPubkey) {
+        actionContexts.delete(actionId);
+        actionContexts.set(actionId, current);
+        return;
+      }
+      actionContexts.set(actionId, next);
       if (actionContexts.size > 2048) {
         actionContexts.delete(actionContexts.keys().next().value);
       }
@@ -7986,6 +7993,11 @@
       }
       return context;
     }
+    function requireCurrentActionContext(actionId, context) {
+      if (actionContexts.get(String(actionId || "")) !== context) {
+        throw new Error("Request action is no longer active");
+      }
+    }
     function profileLnurl(content) {
       try {
         const metadata = JSON.parse(content || "{}");
@@ -8014,12 +8026,13 @@
       }
       return null;
     }
-    async function resolveZapProvider(pool, relays, context) {
+    async function resolveZapProvider(pool, relays, actionId, context) {
       const events = await queryWithFastQuorum(pool, relays, {
         kinds: [0],
         authors: [context.recipientPubkey],
         limit: 1
       });
+      requireCurrentActionContext(actionId, context);
       const profiles = events.filter(function(event) {
         return event?.kind === 0 && String(event.pubkey || "").toLowerCase() === context.recipientPubkey && verifyEvent(event);
       }).sort(function(left, right) {
@@ -8030,6 +8043,7 @@
         throw new Error("Zap recipient has no valid LNURL provider");
       }
       const response = await sendHttpsJsonRequest(lnurl);
+      requireCurrentActionContext(actionId, context);
       const body = response?.json;
       if (response?.status < 200 || response?.status >= 300 || !body || typeof body !== "object" || body.allowsNostr !== true || !HEX_64_PATTERN.test(String(body.nostrPubkey || ""))) {
         throw new Error("Zap provider returned invalid metadata");
@@ -8098,7 +8112,12 @@
       if (!zapEvent) {
         throw new Error("Zap request is not bound to the active recipient");
       }
-      const provider = await resolveZapProvider(pool, relays, context);
+      const provider = await resolveZapProvider(
+        pool,
+        relays,
+        payload.actionId,
+        context
+      );
       if (provider.minSendable !== null && amount < provider.minSendable || provider.maxSendable !== null && amount > provider.maxSendable || comment.length > provider.commentAllowed) {
         throw new Error("Zap amount or comment is not supported by the provider");
       }
@@ -8106,7 +8125,9 @@
       callback.searchParams.set("amount", String(amount));
       callback.searchParams.set("nostr", JSON.stringify(zapEvent));
       if (comment) callback.searchParams.set("comment", comment);
+      requireCurrentActionContext(payload.actionId, context);
       const response = await sendHttpsJsonRequest(callback.toString());
+      requireCurrentActionContext(payload.actionId, context);
       const invoice = response?.json?.pr;
       if (response?.status < 200 || response?.status >= 300 || typeof invoice !== "string" || getInvoiceAmountMsats(invoice) !== amount) {
         throw new Error("Zap provider returned an invalid invoice");
@@ -8233,7 +8254,12 @@
           )) {
             throw new Error("Zap provider request contains unexpected data");
           }
-          const provider = await resolveZapProvider(pool, relays, context);
+          const provider = await resolveZapProvider(
+            pool,
+            relays,
+            payload.actionId,
+            context
+          );
           return {
             lnurl: provider.lnurl,
             callback: provider.callback,

@@ -1787,6 +1787,8 @@ describe('CSP-safe component and relay integration', function () {
       new Uint8Array(32).fill(13)
     );
     const backgroundRequests = [];
+    let actionId;
+    let replaceActionDuringInvoice = false;
     globalThis.chrome = {
       runtime: {
         sendMessage(message, callback) {
@@ -1807,6 +1809,13 @@ describe('CSP-safe component and relay integration', function () {
               }
             });
           } else {
+            if (replaceActionDuringInvoice) {
+              extension.relayClient.registerActionContext(actionId, {
+                kind: 'x',
+                url: 'https://x.com/alice/status/43',
+                recipientNpub: recipientNpub
+              });
+            }
             callback({
               ok: true,
               result: {
@@ -1834,7 +1843,7 @@ describe('CSP-safe component and relay integration', function () {
       window: pageWindow
     });
     const onMessage = listeners.get('message');
-    const actionId = 'e'.repeat(64);
+    actionId = 'e'.repeat(64);
     extension.relayClient.registerActionContext(actionId, {
       kind: 'x',
       url: contentUrl,
@@ -1847,6 +1856,23 @@ describe('CSP-safe component and relay integration', function () {
       data: await createAuthenticatedRelayRequest(
         channel,
         '0'.repeat(32),
+        'fetchZapInvoice',
+        {
+          actionId: actionId,
+          relays: ['wss://relay.damus.io'],
+          amount: amount,
+          comment: '',
+          zapEvent: zapEvent
+        }
+      )
+    });
+    replaceActionDuringInvoice = true;
+    await onMessage({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: await createAuthenticatedRelayRequest(
+        channel,
+        '2'.repeat(32),
         'fetchZapInvoice',
         {
           actionId: actionId,
@@ -1882,7 +1908,9 @@ describe('CSP-safe component and relay integration', function () {
       }
     });
     expect(responses[1].ok).toBe(false);
-    expect(backgroundRequests).toHaveLength(2);
+    expect(responses[1].error).toContain('no longer active');
+    expect(responses[2].ok).toBe(false);
+    expect(backgroundRequests).toHaveLength(4);
     expect(backgroundRequests[1].url).toContain('amount=' + amount);
     expect(backgroundRequests[1].url).toContain(
       'nostr=' + encodeURIComponent(JSON.stringify(zapEvent))

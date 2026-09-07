@@ -573,11 +573,23 @@ import { decode as decodeBolt11 } from 'light-bolt11-decoder';
     ) {
       throw new Error('Invalid isolated action context');
     }
-    actionContexts.set(actionId, {
+    const next = {
       kind: context.kind,
       url: context.url,
       recipientPubkey: decodeRecipientNpub(context.recipientNpub)
-    });
+    };
+    const current = actionContexts.get(actionId);
+    if (
+      current &&
+      current.kind === next.kind &&
+      current.url === next.url &&
+      current.recipientPubkey === next.recipientPubkey
+    ) {
+      actionContexts.delete(actionId);
+      actionContexts.set(actionId, current);
+      return;
+    }
+    actionContexts.set(actionId, next);
     if (actionContexts.size > 2048) {
       actionContexts.delete(actionContexts.keys().next().value);
     }
@@ -648,6 +660,12 @@ import { decode as decodeBolt11 } from 'light-bolt11-decoder';
     return context;
   }
 
+  function requireCurrentActionContext(actionId, context) {
+    if (actionContexts.get(String(actionId || '')) !== context) {
+      throw new Error('Request action is no longer active');
+    }
+  }
+
   function profileLnurl(content) {
     try {
       const metadata = JSON.parse(content || '{}');
@@ -684,12 +702,13 @@ import { decode as decodeBolt11 } from 'light-bolt11-decoder';
     return null;
   }
 
-  async function resolveZapProvider(pool, relays, context) {
+  async function resolveZapProvider(pool, relays, actionId, context) {
     const events = await queryWithFastQuorum(pool, relays, {
       kinds: [0],
       authors: [context.recipientPubkey],
       limit: 1
     });
+    requireCurrentActionContext(actionId, context);
     const profiles = events
       .filter(function (event) {
         return (
@@ -710,6 +729,7 @@ import { decode as decodeBolt11 } from 'light-bolt11-decoder';
     }
 
     const response = await sendHttpsJsonRequest(lnurl);
+    requireCurrentActionContext(actionId, context);
     const body = response?.json;
     if (
       response?.status < 200 ||
@@ -826,7 +846,12 @@ import { decode as decodeBolt11 } from 'light-bolt11-decoder';
       throw new Error('Zap request is not bound to the active recipient');
     }
 
-    const provider = await resolveZapProvider(pool, relays, context);
+    const provider = await resolveZapProvider(
+      pool,
+      relays,
+      payload.actionId,
+      context
+    );
     if (
       (provider.minSendable !== null && amount < provider.minSendable) ||
       (provider.maxSendable !== null && amount > provider.maxSendable) ||
@@ -839,7 +864,9 @@ import { decode as decodeBolt11 } from 'light-bolt11-decoder';
     callback.searchParams.set('nostr', JSON.stringify(zapEvent));
     if (comment) callback.searchParams.set('comment', comment);
 
+    requireCurrentActionContext(payload.actionId, context);
     const response = await sendHttpsJsonRequest(callback.toString());
+    requireCurrentActionContext(payload.actionId, context);
     const invoice = response?.json?.pr;
     if (
       response?.status < 200 ||
@@ -1018,7 +1045,12 @@ import { decode as decodeBolt11 } from 'light-bolt11-decoder';
         ) {
           throw new Error('Zap provider request contains unexpected data');
         }
-        const provider = await resolveZapProvider(pool, relays, context);
+        const provider = await resolveZapProvider(
+          pool,
+          relays,
+          payload.actionId,
+          context
+        );
         return {
           lnurl: provider.lnurl,
           callback: provider.callback,
