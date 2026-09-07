@@ -28268,6 +28268,16 @@ ${url}`;
   var nativeAppendChild = elementPrototype?.appendChild;
   var nativeRemove = elementPrototype?.remove;
   var nativeSetAttribute = elementPrototype?.setAttribute;
+  var targetGetter = Object.getOwnPropertyDescriptor(
+    globalThis.Event?.prototype || {},
+    "target"
+  )?.get;
+  var detailGetter = Object.getOwnPropertyDescriptor(
+    globalThis.CustomEvent?.prototype || {},
+    "detail"
+  )?.get;
+  var readEventTarget = targetGetter ? Function.call.bind(targetGetter) : (event) => event.target;
+  var readEventDetail = detailGetter ? Function.call.bind(detailGetter) : (event) => event.detail;
   function querySelector(element, selector) {
     return nativeQuerySelector ? nativeQuerySelector.call(element, selector) : element.querySelector(selector);
   }
@@ -28371,7 +28381,15 @@ ${url}`;
     const getRegistered = registry?.get?.bind(registry);
     const capturedRegistry = { get: getRegistered };
     const handler = function(event) {
-      hydrateActionSlot(event.target, event.detail, capturedRegistry);
+      let target;
+      let detail;
+      try {
+        target = readEventTarget(event);
+        detail = readEventDetail(event);
+      } catch (_error) {
+        return;
+      }
+      hydrateActionSlot(target, detail, capturedRegistry);
     };
     root.addEventListener(eventName, handler, true);
     return Object.freeze({

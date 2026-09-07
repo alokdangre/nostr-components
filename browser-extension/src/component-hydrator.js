@@ -18,6 +18,20 @@ const nativeQuerySelector = elementPrototype?.querySelector;
 const nativeAppendChild = elementPrototype?.appendChild;
 const nativeRemove = elementPrototype?.remove;
 const nativeSetAttribute = elementPrototype?.setAttribute;
+const targetGetter = Object.getOwnPropertyDescriptor(
+  globalThis.Event?.prototype || {},
+  'target',
+)?.get;
+const detailGetter = Object.getOwnPropertyDescriptor(
+  globalThis.CustomEvent?.prototype || {},
+  'detail',
+)?.get;
+const readEventTarget = targetGetter
+  ? Function.call.bind(targetGetter)
+  : event => event.target;
+const readEventDetail = detailGetter
+  ? Function.call.bind(detailGetter)
+  : event => event.detail;
 
 function querySelector(element, selector) {
   return nativeQuerySelector
@@ -162,7 +176,15 @@ export function installComponentHydrator({
   const getRegistered = registry?.get?.bind(registry);
   const capturedRegistry = { get: getRegistered };
   const handler = function (event) {
-    hydrateActionSlot(event.target, event.detail, capturedRegistry);
+    let target;
+    let detail;
+    try {
+      target = readEventTarget(event);
+      detail = readEventDetail(event);
+    } catch (_error) {
+      return;
+    }
+    hydrateActionSlot(target, detail, capturedRegistry);
   };
   root.addEventListener(eventName, handler, true);
 

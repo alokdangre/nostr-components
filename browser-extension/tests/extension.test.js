@@ -5,7 +5,10 @@ import { readFileSync } from 'node:fs';
 import { finalizeEvent, nip19 } from 'nostr-tools';
 
 import { EventEmitter as CspEventEmitter } from '../src/csp-event-emitter.js';
-import { hydrateActionSlot } from '../src/component-hydrator.js';
+import {
+  hydrateActionSlot,
+  installComponentHydrator
+} from '../src/component-hydrator.js';
 import { createMainRelayTransport } from '../src/main-relay-transport';
 import { getTrustedActionContext } from '../../src/common/trusted-action-context';
 
@@ -327,6 +330,85 @@ describe('Zap action integration', function () {
     ).toBe(true);
     expect(slot.querySelector('nostr-zap-button')).toBeNull();
     expect(getTrustedActionContext(trustedZap)).toBeNull();
+  });
+
+  it('reads hydration target and detail through captured native accessors', function () {
+    class EventSlot extends EventTarget {
+      constructor() {
+        super();
+        this.children = [];
+      }
+
+      appendChild(child) {
+        this.children.push(child);
+        return child;
+      }
+
+      querySelector(selector) {
+        return this.children.find(child => child.tagName === selector) || null;
+      }
+    }
+    class RegisteredLike extends FakeElement {
+      constructor() {
+        super('nostr-like-button');
+      }
+    }
+    class RegisteredZap extends FakeElement {
+      constructor() {
+        super('nostr-zap-button');
+      }
+    }
+    const registry = new Map([
+      ['nostr-like-button', RegisteredLike],
+      ['nostr-zap-button', RegisteredZap]
+    ]);
+    const slot = new EventSlot();
+    const attackerSlot = new EventSlot();
+    const channel = 'f'.repeat(64);
+    installComponentHydrator({
+      channel,
+      root: slot,
+      registry: {
+        get(tagName) {
+          return registry.get(tagName);
+        }
+      }
+    });
+
+    const event = new CustomEvent(
+      'nostr-components-hydrate:' + channel,
+      {
+        detail: {
+          actionId: 'a'.repeat(64),
+          kind: 'x',
+          url: 'https://x.com/alice/status/42',
+          theme: 'light',
+          recipientNpub: recipientNpub
+        }
+      }
+    );
+    Object.defineProperty(event, 'target', {
+      get() {
+        return attackerSlot;
+      }
+    });
+    Object.defineProperty(event, 'detail', {
+      get() {
+        return {
+          actionId: 'a'.repeat(64),
+          kind: 'x',
+          url: 'https://x.com/alice/status/42',
+          theme: 'light',
+          recipientNpub: nip19.npubEncode('9'.repeat(64))
+        };
+      }
+    });
+    slot.dispatchEvent(event);
+
+    expect(attackerSlot.querySelector('nostr-zap-button')).toBeNull();
+    expect(slot.querySelector('nostr-zap-button').getAttribute('npub')).toBe(
+      recipientNpub
+    );
   });
 
   it('adds X Zap only for a verified zappable directory identity', function () {
