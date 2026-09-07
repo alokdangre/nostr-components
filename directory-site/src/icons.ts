@@ -3,6 +3,10 @@ export const icon = {
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
       <path d="M5 12h14M14 7l5 5-5 5" />
     </svg>`,
+  chevron: () => `
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+      <path d="m6 8 4 4 4-4" />
+    </svg>`,
   check: () => `
     <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
       <path d="m6.5 10.1 2.1 2.2 5-5" />

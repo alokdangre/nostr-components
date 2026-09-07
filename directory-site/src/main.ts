@@ -5,7 +5,12 @@ import {
   type DirectoryCategory,
   type DirectoryProfile,
 } from "./data";
-import { formatFollowers, getVisibleProfiles, truncateNpub } from "./directory";
+import {
+  formatFollowers,
+  getVisibleProfiles,
+  truncateNpub,
+  type DirectorySort,
+} from "./directory";
 import { brandMark, icon, networkGraphic } from "./icons";
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
@@ -17,6 +22,7 @@ const app = appRoot;
 let profiles: DirectoryProfile[] = [...directoryProfiles];
 let category: DirectoryCategory = "Popular on X.com";
 let query = "";
+let sort: DirectorySort = "followers";
 
 const escapeHtml = (value: string): string =>
   value.replace(
@@ -75,6 +81,7 @@ function renderProfiles(): void {
   const visibleProfiles = getVisibleProfiles(profiles, {
     category,
     query,
+    sort,
   });
 
   resultCount.textContent = `${visibleProfiles.length} ${visibleProfiles.length === 1 ? "creator claim" : "creator claims"}`;
@@ -120,6 +127,14 @@ function renderApp(): void {
       <section class="directory shell" id="directory" aria-label="Creator claims">
         <div class="directory-heading-row">
           <p id="result-count" aria-live="polite"></p>
+          <label class="sort-control">
+            <span class="sr-only">Sort directory</span>
+            <select id="sort-directory">
+              <option value="followers"${sort === "followers" ? " selected" : ""}>Most followed</option>
+              <option value="name"${sort === "name" ? " selected" : ""}>Name A–Z</option>
+            </select>
+            ${icon.chevron()}
+          </label>
         </div>
 
         <div class="tabs" role="tablist" aria-label="Creator claim categories">
@@ -196,6 +211,8 @@ function bindEvents(): void {
   const searchForm = document.querySelector<HTMLFormElement>("#hero-search");
   const searchInput =
     document.querySelector<HTMLInputElement>("#directory-search");
+  const sortSelect =
+    document.querySelector<HTMLSelectElement>("#sort-directory");
   const profileDialog =
     document.querySelector<HTMLDialogElement>("#profile-dialog");
   const addProfileForm =
@@ -212,6 +229,11 @@ function bindEvents(): void {
 
   searchInput?.addEventListener("input", (event) => {
     query = (event.target as HTMLInputElement).value;
+    renderProfiles();
+  });
+
+  sortSelect?.addEventListener("change", (event) => {
+    sort = (event.target as HTMLSelectElement).value as DirectorySort;
     renderProfiles();
   });
 
@@ -246,7 +268,9 @@ function bindEvents(): void {
       if (clearFilters) {
         query = "";
         category = "Popular on X.com";
+        sort = "followers";
         if (searchInput) searchInput.value = "";
+        if (sortSelect) sortSelect.value = "followers";
         document
           .querySelectorAll<HTMLButtonElement>("[data-category]")
           .forEach((tab) => {

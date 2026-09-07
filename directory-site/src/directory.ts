@@ -1,8 +1,11 @@
 import type { DirectoryCategory, DirectoryProfile } from "./data";
 
+export type DirectorySort = "followers" | "name";
+
 export interface DirectoryFilters {
   readonly category: DirectoryCategory;
   readonly query: string;
+  readonly sort: DirectorySort;
 }
 
 export function normalizeSearch(value: string): string {
@@ -39,7 +42,10 @@ export function getVisibleProfiles(
     ].some((value) => normalizeSearch(value).includes(query));
   });
 
-  return filtered.sort((a, b) => b.followers - a.followers);
+  return filtered.sort((a, b) => {
+    if (filters.sort === "name") return a.name.localeCompare(b.name);
+    return b.followers - a.followers;
+  });
 }
 
 export function formatFollowers(value: number): string {

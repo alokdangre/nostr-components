@@ -10,6 +10,7 @@ import {
 const baseFilters = {
   category: "Popular on X.com" as const,
   query: "",
+  sort: "followers" as const,
 };
 
 describe("directory filtering", () => {
@@ -40,6 +41,15 @@ describe("directory filtering", () => {
         category: "Popular on Nostr",
       }).map((profile) => profile.id),
     ).toEqual(["damus", "nostr", "snort"]);
+  });
+
+  it("applies the category and alphabetical sort together", () => {
+    expect(
+      getVisibleProfiles(directoryProfiles, {
+        ...baseFilters,
+        sort: "name",
+      }).map((profile) => profile.name),
+    ).toEqual(["Guy Swann", "jack", "tbot"]);
   });
 });
 
