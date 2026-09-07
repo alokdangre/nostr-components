@@ -10,7 +10,7 @@ import { normalizeURL } from 'nostr-tools/utils';
   const CHANNEL_PATTERN = /^[0-9a-f]{64}$/;
   const REQUEST_ID_PATTERN = /^[0-9a-f]{32}$/;
   const MESSAGE_MAC_PATTERN = /^[0-9a-f]{64}$/;
-  const BRIDGE_AUTH_CONTEXT = 'nostr-components-relay-v1';
+  const BRIDGE_AUTH_CONTEXT = 'nostr-components-relay-v2';
   const HEX_64_PATTERN = /^[0-9a-f]{64}$/i;
   const HEX_128_PATTERN = /^[0-9a-f]{128}$/i;
   const QUERY_DEADLINE_MS = 2500;
@@ -45,9 +45,41 @@ import { normalizeURL } from 'nostr-tools/utils';
   const relayHealth = new Map();
   const recentReactionsByUrl = new Map();
 
+  function canonicalJson(value) {
+    if (value === null) return 'null';
+    if (typeof value === 'string' || typeof value === 'number') {
+      const serialized = JSON.stringify(value);
+      if (serialized === undefined) {
+        throw new Error('Relay bridge value is not serializable');
+      }
+      return serialized;
+    }
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (Array.isArray(value)) {
+      const items = [];
+      for (let index = 0; index < value.length; index += 1) {
+        items.push(
+          Object.hasOwn(value, index) && value[index] !== undefined
+            ? canonicalJson(value[index])
+            : 'null'
+        );
+      }
+      return '[' + items.join(',') + ']';
+    }
+    if (!value || typeof value !== 'object') {
+      throw new Error('Relay bridge value is not serializable');
+    }
+    const entries = [];
+    for (const key of Object.keys(value).sort()) {
+      if (value[key] === undefined) continue;
+      entries.push(JSON.stringify(key) + ':' + canonicalJson(value[key]));
+    }
+    return '{' + entries.join(',') + '}';
+  }
+
   function bridgeAuthPayload(type, message) {
     if (type === 'request') {
-      return JSON.stringify([
+      return canonicalJson([
         BRIDGE_AUTH_CONTEXT,
         'request',
         message.requestId,
@@ -55,7 +87,7 @@ import { normalizeURL } from 'nostr-tools/utils';
         message.payload
       ]);
     }
-    return JSON.stringify([
+    return canonicalJson([
       BRIDGE_AUTH_CONTEXT,
       'response',
       message.requestId,

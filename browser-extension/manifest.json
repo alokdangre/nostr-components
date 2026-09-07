@@ -4,7 +4,7 @@
   "version": "0.7.1",
   "description": "Adds Nostr Like and Zap actions to posts on X and YouTube.",
   "incognito": "split",
-  "permissions": ["scripting", "storage"],
+  "permissions": ["storage"],
   "host_permissions": [
     "https://x.com/*",
     "https://twitter.com/*",
@@ -47,6 +47,18 @@
       ],
       "css": ["styles.css"],
       "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*",
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*",
+        "https://youtube.com/*"
+      ],
+      "js": ["lib/nostr-extension-components.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ]
 }

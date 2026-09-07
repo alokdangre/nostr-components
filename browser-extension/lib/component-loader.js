@@ -3,50 +3,43 @@
 (function () {
   const extension = globalThis.NostrLikeExtension = globalThis.NostrLikeExtension || {};
   const HYDRATION_EVENT_PREFIX = 'nostr-components-hydrate:';
+  const RELAY_BOOTSTRAP_EVENT = 'nostr-components-relay-bootstrap:v2';
+  const CHANNEL_PATTERN = /^[0-9a-f]{64}$/;
+  let hydrationEventName = null;
+  let resolveReady;
+  let rejectReady;
+  const ready = new Promise(function (resolve, reject) {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
 
-  function createChannel() {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, function (value) {
-      return value.toString(16).padStart(2, '0');
-    }).join('');
-  }
-
-  async function sendInjectionRequest(relayChannel, hydrationChannel) {
-    const message = {
-      type: 'INJECT_NOSTR_COMPONENTS',
-      channel: relayChannel,
-      hydrationChannel: hydrationChannel
-    };
-
-    let response;
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      response = await browser.runtime.sendMessage(message);
-    } else if (typeof chrome !== 'undefined' && chrome.runtime) {
-      response = await new Promise(function (resolve, reject) {
-        chrome.runtime.sendMessage(message, function (value) {
-          const error = chrome.runtime && chrome.runtime.lastError;
-          if (error) {
-            reject(new Error(error.message));
-            return;
-          }
-          resolve(value);
-        });
-      });
-    } else {
-      throw new Error('Browser runtime API is not available');
+  function receiveBootstrap(event) {
+    const relayChannel = String(event.detail?.relayChannel || '');
+    const hydrationChannel = String(event.detail?.hydrationChannel || '');
+    if (
+      event.target !== document ||
+      !CHANNEL_PATTERN.test(relayChannel) ||
+      !CHANNEL_PATTERN.test(hydrationChannel)
+    ) {
+      return;
     }
 
-    if (!response || response.ok !== true) {
-      throw new Error((response && response.error) || 'Nostr component injection failed');
+    document.removeEventListener(RELAY_BOOTSTRAP_EVENT, receiveBootstrap, true);
+    try {
+      extension.relayClient.configure(relayChannel);
+      hydrationEventName = HYDRATION_EVENT_PREFIX + hydrationChannel;
+      resolveReady(true);
+    } catch (error) {
+      rejectReady(error);
     }
   }
 
-  const relayChannel = createChannel();
-  const hydrationChannel = createChannel();
-  const hydrationEventName = HYDRATION_EVENT_PREFIX + hydrationChannel;
+  document.addEventListener(RELAY_BOOTSTRAP_EVENT, receiveBootstrap, true);
 
   function hydrate(slot) {
+    if (!hydrationEventName) {
+      throw new Error('MAIN-world component bridge is not ready');
+    }
     slot.dispatchEvent(new Event(hydrationEventName, { bubbles: true }));
     if (!slot.querySelector('nostr-like-button')) {
       throw new Error('MAIN-world component hydrator did not create Nostr Like');
@@ -54,10 +47,8 @@
     return true;
   }
 
-  extension.relayClient.configure(relayChannel);
   extension.componentLoader = {
-    channel: relayChannel,
-    ready: sendInjectionRequest(relayChannel, hydrationChannel),
+    ready: ready,
     hydrate: hydrate
   };
 })();

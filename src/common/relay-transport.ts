@@ -28,8 +28,34 @@ export interface NostrRelayTransport {
   httpGet?(url: string): Promise<NostrRelayHttpGetResult>;
 }
 
+let installedRelayTransport: NostrRelayTransport | null = null;
+
+/**
+ * Install a transport into this bundle's private module scope.
+ *
+ * The browser extension uses this path so page code cannot discover or invoke
+ * its relay and cross-origin HTTP capability through `globalThis`.
+ */
+export function installRelayTransport(
+  transport: NostrRelayTransport,
+): void {
+  if (installedRelayTransport) {
+    throw new Error('Relay transport is already installed');
+  }
+  if (
+    !transport ||
+    typeof transport.query !== 'function' ||
+    typeof transport.publish !== 'function'
+  ) {
+    throw new Error('Invalid relay transport');
+  }
+  installedRelayTransport = transport;
+}
+
 /** Optional host transport used when page CSP prevents direct relay sockets. */
 export function getRelayTransport(): NostrRelayTransport | null {
+  if (installedRelayTransport) return installedRelayTransport;
+
   const transport = (
     globalThis as typeof globalThis & {
       __nostrComponentsRelayTransport?: Partial<NostrRelayTransport>;

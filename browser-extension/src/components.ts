@@ -2,15 +2,24 @@
 
 import '../../src/nostr-like-button/nostr-like';
 import '../../src/nostr-zap-button/nostr-zap';
+import { installRelayTransport } from '../../src/common/relay-transport';
 import { installComponentHydrator } from './component-hydrator';
+import {
+  createMainRelayTransport,
+  createRelayChannels,
+  RELAY_BOOTSTRAP_EVENT,
+} from './main-relay-transport';
 
-const HYDRATOR_KEY = '__nostrComponentsMainWorldHydrator';
-const transport = (globalThis as any).__nostrComponentsRelayTransport;
-const previousHydrator = (globalThis as any)[HYDRATOR_KEY];
+const { relayChannel, hydrationChannel } = createRelayChannels();
 
-if (/^[0-9a-f]{64}$/.test(String(transport?.hydrationChannel || ''))) {
-  previousHydrator?.dispose?.();
-  (globalThis as any)[HYDRATOR_KEY] = installComponentHydrator({
-    channel: transport.hydrationChannel,
-  });
-}
+installRelayTransport(createMainRelayTransport(relayChannel));
+installComponentHydrator({ channel: hydrationChannel });
+
+// Both static content-script worlds run at document_start, before page scripts.
+// Dispatch synchronously after the isolated listener is installed, then keep
+// both channels only in their respective lexical scopes.
+document.dispatchEvent(
+  new CustomEvent(RELAY_BOOTSTRAP_EVENT, {
+    detail: Object.freeze({ relayChannel, hydrationChannel }),
+  }),
+);

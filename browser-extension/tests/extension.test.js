@@ -2,11 +2,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { createContext, runInContext } from 'node:vm';
 import { finalizeEvent, nip19 } from 'nostr-tools';
 
 import { EventEmitter as CspEventEmitter } from '../src/csp-event-emitter.js';
 import { hydrateActionSlot } from '../src/component-hydrator.js';
+import { createMainRelayTransport } from '../src/main-relay-transport';
 
 await import('../lib/url.js');
 await import('../lib/zap-http.js');
@@ -952,9 +952,10 @@ describe('CSP-safe component and relay integration', function () {
     expect(receiver).toBe(emitter);
   });
 
-  it('loads the relay client and MAIN-world component loader in order', function () {
+  it('loads the isolated controller before the private MAIN-world bundle', function () {
     const manifest = JSON.parse(readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
     const scripts = manifest.content_scripts[0].js;
+    const mainWorldEntry = manifest.content_scripts[1];
 
     expect(scripts).toContain('lib/relay-client.js');
     expect(scripts).toContain('lib/zap-http.js');
@@ -970,6 +971,12 @@ describe('CSP-safe component and relay integration', function () {
     expect(scripts).not.toContain('lib/nostr-extension-components.js');
     expect(scripts).not.toContain('lib/signer-adapter.js');
     expect(manifest.content_scripts[0].run_at).toBe('document_start');
+    expect(mainWorldEntry).toMatchObject({
+      js: ['lib/nostr-extension-components.js'],
+      run_at: 'document_start',
+      world: 'MAIN'
+    });
+    expect(manifest.permissions).not.toContain('scripting');
     expect(manifest.content_scripts[0].matches).toEqual(
       expect.arrayContaining(['https://www.youtube.com/*', 'https://m.youtube.com/*'])
     );
@@ -998,96 +1005,51 @@ describe('CSP-safe component and relay integration', function () {
     expect(componentBundle).toContain('customElements.define("nostr-like-button"');
     expect(componentBundle).toContain('customElements.define("nostr-zap-button"');
     expect(componentBundle).toContain('nostr-components-hydrate:');
+    expect(componentBundle).toContain('nostr-components-relay-bootstrap:v2');
     expect(componentBundle).toContain('new ComponentConstructor()');
+    expect(componentBundle).not.toMatch(
+      /globalThis\.__nostrComponentsRelayTransport\s*=/,
+    );
     expect(componentBundle).not.toContain('__nostrComponentsTrustedHTMLPolicy');
     expect(componentBundle).toContain('factory.createPolicy(POLICY_NAME');
     expect(componentLoader).toContain('nostr-components-hydrate:');
+    expect(componentLoader).toContain('nostr-components-relay-bootstrap:v2');
     expect(componentBundle).not.toMatch(/\beval\s*\(/);
   });
 
-  it("injects the transport before the real components in X's MAIN world", async function () {
-    let runtimeListener;
-    const executeScript = vi.fn(async function () {
-      return [];
-    });
-    globalThis.chrome = {
-      runtime: {
-        onMessage: {
-          addListener(listener) {
-            runtimeListener = listener;
-          }
-        }
-      },
-      scripting: { executeScript: executeScript }
-    };
-
-    await import('../background.js');
-
-    const response = await new Promise(function (resolve) {
-      const staysOpen = runtimeListener(
-        {
-          type: 'INJECT_NOSTR_COMPONENTS',
-          channel: 'a'.repeat(64),
-          hydrationChannel: 'b'.repeat(64)
-        },
-        { tab: { id: 87 }, frameId: 0, url: 'https://x.com/home' },
-        resolve
-      );
-      expect(staysOpen).toBe(true);
-    });
-
-    expect(response).toEqual({ ok: true, result: true });
-    expect(executeScript).toHaveBeenCalledTimes(2);
-    expect(executeScript.mock.calls[0][0]).toMatchObject({
-      target: { tabId: 87, frameIds: [0] },
-      world: 'MAIN',
-      func: expect.any(Function),
-      args: ['a'.repeat(64), 'b'.repeat(64)]
-    });
-    expect(executeScript.mock.calls[1][0]).toEqual({
-      target: { tabId: 87, frameIds: [0] },
-      world: 'MAIN',
-      files: ['lib/nostr-extension-components.js']
-    });
-
-    const installTransport = executeScript.mock.calls[0][0].func;
+  it('keeps the relay capability out of the page global', async function () {
     const pageWindow = {
       location: { origin: 'https://x.com' },
       addEventListener: vi.fn(),
       postMessage: vi.fn()
     };
-    const context = createContext({
-      crypto: globalThis.crypto,
-      TextEncoder: globalThis.TextEncoder,
-      Uint8Array: globalThis.Uint8Array,
-      setTimeout: globalThis.setTimeout,
-      clearTimeout: globalThis.clearTimeout,
-      window: pageWindow
+    const subtleFacade = {
+      importKey: globalThis.crypto.subtle.importKey.bind(globalThis.crypto.subtle),
+      sign: globalThis.crypto.subtle.sign.bind(globalThis.crypto.subtle),
+      verify: globalThis.crypto.subtle.verify.bind(globalThis.crypto.subtle)
+    };
+    const cryptoFacade = {
+      subtle: subtleFacade,
+      getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto)
+    };
+    const transport = createMainRelayTransport('a'.repeat(64), {
+      crypto: cryptoFacade,
+      pageWindow
     });
-    const invocation =
-      '(' +
-      installTransport.toString() +
-      ')(' +
-      JSON.stringify('a'.repeat(64)) +
-      ',' +
-      JSON.stringify('b'.repeat(64)) +
-      ')';
-    runInContext(invocation, context);
 
-    const descriptor = Object.getOwnPropertyDescriptor(
-      context,
-      '__nostrComponentsRelayTransport'
-    );
-    expect(descriptor).toMatchObject({
-      writable: false,
-      configurable: false,
-      enumerable: false
+    expect(globalThis).not.toHaveProperty('__nostrComponentsRelayTransport');
+    expect(Object.isFrozen(transport)).toBe(true);
+    subtleFacade.sign = vi.fn(function () {
+      throw new Error('page replaced SubtleCrypto.sign');
     });
-    expect(Object.isFrozen(descriptor.value)).toBe(true);
-    expect(descriptor.value).not.toHaveProperty('__channel');
-    expect(descriptor.value).toHaveProperty('hydrationChannel', 'b'.repeat(64));
+    subtleFacade.verify = vi.fn(function () {
+      return false;
+    });
+    cryptoFacade.getRandomValues = vi.fn(function () {
+      throw new Error('page replaced crypto.getRandomValues');
+    });
 
-    const requestPromise = descriptor.value.httpGet(
+    const requestPromise = transport.httpGet(
       'https://ln.example/.well-known/lnurlp/alice'
     );
     for (
@@ -1142,77 +1104,60 @@ describe('CSP-safe component and relay integration', function () {
       status: 200,
       json: { pr: 'lnbc1original' }
     });
-    expect(() => runInContext(invocation, context)).toThrow(
-      'Relay transport slot is already locked'
+    expect(pageWindow.postMessage.mock.calls[0][0]).not.toHaveProperty(
+      'channel'
     );
   });
 
-  it("allows component injection in YouTube's validated top-level frame", async function () {
-    let runtimeListener;
-    const executeScript = vi.fn(async function () {
-      return [];
-    });
-    globalThis.chrome = {
-      runtime: {
-        onMessage: {
-          addListener(listener) {
-            runtimeListener = listener;
-          }
-        }
+  it('accepts the document-start bootstrap once without exposing channels', async function () {
+    const listeners = new Map();
+    const removed = [];
+    globalThis.document = {
+      addEventListener(type, listener) {
+        listeners.set(type, listener);
       },
-      scripting: { executeScript: executeScript }
+      removeEventListener(type, listener) {
+        removed.push({ type, listener });
+        listeners.delete(type);
+      }
     };
+    const previousLoader = extension.componentLoader;
+    const configure = vi
+      .spyOn(extension.relayClient, 'configure')
+      .mockReturnValue({ dispose: vi.fn() });
 
-    await import('../background.js?youtube-injection');
-    const response = await new Promise(function (resolve) {
-      runtimeListener(
-        {
-          type: 'INJECT_NOSTR_COMPONENTS',
-          channel: 'c'.repeat(64),
-          hydrationChannel: 'd'.repeat(64)
-        },
-        { tab: { id: 88 }, frameId: 0, url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
-        resolve
-      );
+    await import('../lib/component-loader.js?private-bootstrap');
+    const loader = extension.componentLoader;
+    const bootstrap = listeners.get('nostr-components-relay-bootstrap:v2');
+    const hydrationChannel = 'b'.repeat(64);
+    bootstrap({
+      target: globalThis.document,
+      detail: {
+        relayChannel: 'a'.repeat(64),
+        hydrationChannel
+      }
     });
 
-    expect(response).toEqual({ ok: true, result: true });
-    expect(executeScript).toHaveBeenCalledTimes(2);
-  });
+    await expect(loader.ready).resolves.toBe(true);
+    expect(configure).toHaveBeenCalledOnce();
+    expect(loader).not.toHaveProperty('channel');
+    expect(removed).toHaveLength(1);
 
-  it('rejects injection when the sender frame cannot be validated', async function () {
-    let runtimeListener;
-    const executeScript = vi.fn();
-    globalThis.chrome = {
-      runtime: {
-        onMessage: {
-          addListener(listener) {
-            runtimeListener = listener;
-          }
-        }
+    let dispatchedEvent;
+    const like = {};
+    loader.hydrate({
+      dispatchEvent(event) {
+        dispatchedEvent = event;
       },
-      scripting: { executeScript: executeScript }
-    };
-
-    await import('../background.js?missing-frame');
-
-    const response = await new Promise(function (resolve) {
-      runtimeListener(
-        {
-          type: 'INJECT_NOSTR_COMPONENTS',
-          channel: 'a'.repeat(64),
-          hydrationChannel: 'b'.repeat(64)
-        },
-        { tab: { id: 87 }, url: 'https://x.com/home' },
-        resolve
-      );
+      querySelector() {
+        return like;
+      }
     });
+    expect(dispatchedEvent.type).toBe(
+      'nostr-components-hydrate:' + hydrationChannel
+    );
 
-    expect(response).toEqual({
-      ok: false,
-      error: 'Nostr component injection requires a validated sender frame'
-    });
-    expect(executeScript).not.toHaveBeenCalled();
+    extension.componentLoader = previousLoader;
   });
 
   it('proxies LNURL JSON through the background for supported senders', async function () {

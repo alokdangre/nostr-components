@@ -19291,17 +19291,27 @@
   });
 
   // src/common/relay-transport.ts
+  function installRelayTransport(transport) {
+    if (installedRelayTransport) {
+      throw new Error("Relay transport is already installed");
+    }
+    if (!transport || typeof transport.query !== "function" || typeof transport.publish !== "function") {
+      throw new Error("Invalid relay transport");
+    }
+    installedRelayTransport = transport;
+  }
   function getRelayTransport() {
-    const transport2 = globalThis.__nostrComponentsRelayTransport;
-    if (!transport2 || typeof transport2.query !== "function" || typeof transport2.publish !== "function") {
+    if (installedRelayTransport) return installedRelayTransport;
+    const transport = globalThis.__nostrComponentsRelayTransport;
+    if (!transport || typeof transport.query !== "function" || typeof transport.publish !== "function") {
       return null;
     }
-    return transport2;
+    return transport;
   }
   async function httpGetJson(url) {
-    const transport2 = getRelayTransport();
-    if (typeof transport2?.httpGet === "function") {
-      return transport2.httpGet(url);
+    const transport = getRelayTransport();
+    if (typeof transport?.httpGet === "function") {
+      return transport.httpGet(url);
     }
     const response = await fetch(url, {
       method: "GET",
@@ -19316,10 +19326,11 @@
     }
     return { status: response.status, json };
   }
-  var ZAP_HTTP_TIMEOUT_MS;
+  var installedRelayTransport, ZAP_HTTP_TIMEOUT_MS;
   var init_relay_transport = __esm({
     "src/common/relay-transport.ts"() {
       "use strict";
+      installedRelayTransport = null;
       ZAP_HTTP_TIMEOUT_MS = 1e4;
     }
   });
@@ -19765,9 +19776,9 @@
         const cacheKey = profileCacheKey(authorId, relayList);
         const cached = profileCache.get(cacheKey);
         if (cached) return cached;
-        const transport2 = getRelayTransport();
-        if (transport2) {
-          const events = await transport2.query(relayList, {
+        const transport = getRelayTransport();
+        if (transport) {
+          const events = await transport.query(relayList, {
             authors: [authorId],
             kinds: [0],
             limit: 1
@@ -19807,8 +19818,8 @@
             profile: profileCache.get(profileCacheKey(id, relayList)) || null
           }));
         }
-        const transport2 = getRelayTransport();
-        const pool = transport2 ? null : new SimplePool();
+        const transport = getRelayTransport();
+        const pool = transport ? null : new SimplePool();
         const requestedIds = new Set(uncachedIds);
         try {
           for (let offset = 0; offset < uncachedIds.length; offset += PROFILE_QUERY_BATCH_SIZE) {
@@ -19818,7 +19829,7 @@
               kinds: [0],
               limit: batch.length
             };
-            const events = transport2 ? await transport2.query(relayList, filter) : await pool.querySync(relayList, filter);
+            const events = transport ? await transport.query(relayList, filter) : await pool.querySync(relayList, filter);
             cacheVerifiedProfiles(events, requestedIds, relayList);
           }
           return authorIds.map((id) => ({
@@ -19963,8 +19974,8 @@
         relays,
         url
       }) => {
-        const transport2 = getRelayTransport();
-        const pool = transport2 ? null : new SimplePool();
+        const transport = getRelayTransport();
+        const pool = transport ? null : new SimplePool();
         let totalAmount = 0;
         const zapDetails = [];
         try {
@@ -19984,7 +19995,7 @@
           if (url) {
             filter["#a"] = [buildUrlATag(pubkey, url)];
           }
-          const events = transport2 ? await transport2.query(relays, filter) : await pool.querySync(relays, filter);
+          const events = transport ? await transport.query(relays, filter) : await pool.querySync(relays, filter);
           for (const event of events) {
             const validated = validateZapReceipt(event, {
               recipientPubkey: pubkey,
@@ -20021,8 +20032,8 @@
       }) => {
         const normalizedRelays = Array.from(new Set(relays));
         const since = Math.floor((Date.now() - 24 * 60 * 60 * 1e3) / 1e3);
-        const transport2 = getRelayTransport();
-        if (transport2) {
+        const transport = getRelayTransport();
+        if (transport) {
           let stopped = false;
           let timeoutId = null;
           const deadlineAt = Date.now() + ZAP_RECEIPT_POLL_TIMEOUT_MS;
@@ -20032,7 +20043,7 @@
               return;
             }
             try {
-              const events = await transport2.query(normalizedRelays, {
+              const events = await transport.query(normalizedRelays, {
                 kinds: [9735],
                 "#p": [receiversPubKey],
                 since,
@@ -24100,8 +24111,8 @@
     }
     async getProfile(user, relays = this.getRelays()) {
       if (!user) return null;
-      const transport2 = getRelayTransport();
-      if (transport2) {
+      const transport = getRelayTransport();
+      if (transport) {
         const event = await getProfileMetadata(user.pubkey, relays);
         if (!event) return null;
         try {
@@ -25313,9 +25324,9 @@ ${url}`;
 
   // src/nostr-like-button/like-utils.ts
   async function fetchCachedLikeStateForUrl(url, relays) {
-    const transport2 = getRelayTransport();
-    if (!transport2?.getCachedLikeState) return null;
-    const state = await transport2.getCachedLikeState(relays, normalizeURL2(url));
+    const transport = getRelayTransport();
+    if (!transport?.getCachedLikeState) return null;
+    const state = await transport.getCachedLikeState(relays, normalizeURL2(url));
     return state.found ? state.isLiked : null;
   }
   async function fetchLikesForUrl(url, relays) {
@@ -25328,9 +25339,9 @@ ${url}`;
         "#i": [normalizedUrl],
         limit: 1e3
       };
-      const transport2 = getRelayTransport();
-      if (transport2?.getLikeState) {
-        const state = await transport2.getLikeState(relays, normalizedUrl);
+      const transport = getRelayTransport();
+      if (transport?.getLikeState) {
+        const state = await transport.getLikeState(relays, normalizedUrl);
         return {
           ...state,
           // The extension deliberately keeps liker pubkeys out of MAIN-world
@@ -25338,7 +25349,7 @@ ${url}`;
           likeDetails: []
         };
       }
-      const events = transport2 ? await transport2.query(relays, filter) : await pool.querySync(relays, filter);
+      const events = transport ? await transport.query(relays, filter) : await pool.querySync(relays, filter);
       return netLikesByPubkey(events);
     } catch (error) {
       throw error instanceof Error ? error : new Error(String(error));
@@ -25374,8 +25385,8 @@ ${url}`;
         "#i": [normalizedUrl],
         limit: 1
       };
-      const transport2 = getRelayTransport();
-      const events = transport2 ? await transport2.query(relays, filter) : await pool.querySync(relays, filter);
+      const transport = getRelayTransport();
+      const events = transport ? await transport.query(relays, filter) : await pool.querySync(relays, filter);
       if (events.length === 0) return false;
       const latest = events[0];
       return latest.content === "+" || latest.content === "";
@@ -25387,9 +25398,9 @@ ${url}`;
     }
   }
   async function publishSignedReaction(event, relays, publishWithNdk) {
-    const transport2 = getRelayTransport();
-    if (transport2) {
-      await transport2.publish(relays, event);
+    const transport = getRelayTransport();
+    if (transport) {
+      await transport.publish(relays, event);
       return;
     }
     await publishWithNdk();
@@ -28177,6 +28188,9 @@ ${url}`;
     customElements.define("nostr-zap-button", NostrZap);
   }
 
+  // browser-extension/src/components.ts
+  init_relay_transport();
+
   // browser-extension/src/component-hydrator.js
   var COMPONENT_HYDRATION_EVENT_PREFIX = "nostr-components-hydrate:";
   function setCommonAttributes(component, slot) {
@@ -28241,16 +28255,276 @@ ${url}`;
     });
   }
 
-  // browser-extension/src/components.ts
-  var HYDRATOR_KEY = "__nostrComponentsMainWorldHydrator";
-  var transport = globalThis.__nostrComponentsRelayTransport;
-  var previousHydrator = globalThis[HYDRATOR_KEY];
-  if (/^[0-9a-f]{64}$/.test(String(transport?.hydrationChannel || ""))) {
-    previousHydrator?.dispose?.();
-    globalThis[HYDRATOR_KEY] = installComponentHydrator({
-      channel: transport.hydrationChannel
+  // browser-extension/src/main-relay-transport.ts
+  var RELAY_BOOTSTRAP_EVENT = "nostr-components-relay-bootstrap:v2";
+  var REQUEST_SOURCE = "nostr-components-relay-main";
+  var RESPONSE_SOURCE = "nostr-components-relay-extension";
+  var AUTH_CONTEXT = "nostr-components-relay-v2";
+  var CHANNEL_PATTERN = /^[0-9a-f]{64}$/;
+  var REQUEST_ID_PATTERN = /^[0-9a-f]{32}$/;
+  var MESSAGE_MAC_PATTERN = /^[0-9a-f]{64}$/;
+  function createMainRelayTransport(channel, options = {}) {
+    if (!CHANNEL_PATTERN.test(String(channel || ""))) {
+      throw new Error("Invalid relay bridge channel");
+    }
+    const cryptoImpl = options.crypto || globalThis.crypto;
+    const pageWindow = options.pageWindow || globalThis.window;
+    const cloneImpl = options.structuredClone || globalThis.structuredClone?.bind(globalThis);
+    if (!cryptoImpl?.subtle || !pageWindow || typeof cloneImpl !== "function") {
+      throw new Error("Secure relay bridge primitives are unavailable");
+    }
+    const subtle = cryptoImpl.subtle;
+    const importKey = subtle.importKey.bind(subtle);
+    const sign = subtle.sign.bind(subtle);
+    const verify = subtle.verify.bind(subtle);
+    const getRandomValues = cryptoImpl.getRandomValues.bind(cryptoImpl);
+    const cloneValue = cloneImpl;
+    const encoder = new TextEncoder();
+    const encode2 = encoder.encode.bind(encoder);
+    const parseHex = Number.parseInt.bind(Number);
+    const stringifyPrimitive = JSON.stringify.bind(JSON);
+    const sliceString = Function.call.bind(String.prototype.slice);
+    const objectKeys = Object.keys.bind(Object);
+    const hasOwn = Object.hasOwn.bind(Object);
+    const arrayIsArray = Array.isArray.bind(Array);
+    const testPattern = Function.call.bind(RegExp.prototype.test);
+    const sortArray = Function.call.bind(Array.prototype.sort);
+    const pushArray = Function.call.bind(Array.prototype.push);
+    const joinArray = Function.call.bind(Array.prototype.join);
+    const scheduleTimeout = globalThis.setTimeout.bind(globalThis);
+    const cancelTimeout = globalThis.clearTimeout.bind(globalThis);
+    const postMessage = pageWindow.postMessage.bind(pageWindow);
+    const addEventListener = pageWindow.addEventListener.bind(pageWindow);
+    const StringConstructor = String;
+    const Uint8ArrayConstructor = Uint8Array;
+    const PromiseConstructor = Promise;
+    const ErrorConstructor = Error;
+    const pending = /* @__PURE__ */ new Map();
+    const pendingHas = pending.has.bind(pending);
+    const pendingGet = pending.get.bind(pending);
+    const pendingSet = pending.set.bind(pending);
+    const pendingDelete = pending.delete.bind(pending);
+    const pageOrigin = pageWindow.location.origin;
+    function isRecord2(value) {
+      return Boolean(value) && typeof value === "object" && !arrayIsArray(value);
+    }
+    function canonicalJson(value) {
+      if (value === null) return "null";
+      if (typeof value === "string" || typeof value === "number") {
+        const serialized = stringifyPrimitive(value);
+        if (serialized === void 0) {
+          throw new ErrorConstructor("Relay bridge value is not serializable");
+        }
+        return serialized;
+      }
+      if (typeof value === "boolean") return value ? "true" : "false";
+      if (arrayIsArray(value)) {
+        const items = [];
+        for (let index = 0; index < value.length; index += 1) {
+          pushArray(
+            items,
+            hasOwn(value, index) && value[index] !== void 0 ? canonicalJson(value[index]) : "null"
+          );
+        }
+        return `[${joinArray(items, ",")}]`;
+      }
+      if (!isRecord2(value)) {
+        throw new ErrorConstructor("Relay bridge value is not serializable");
+      }
+      const keys = sortArray(objectKeys(value));
+      const entries2 = [];
+      for (let index = 0; index < keys.length; index += 1) {
+        const key = keys[index];
+        if (value[key] === void 0) continue;
+        pushArray(
+          entries2,
+          `${stringifyPrimitive(key)}:${canonicalJson(value[key])}`
+        );
+      }
+      return `{${joinArray(entries2, ",")}}`;
+    }
+    function authPayload(type, message) {
+      return canonicalJson(
+        type === "request" ? [
+          AUTH_CONTEXT,
+          "request",
+          message.requestId,
+          message.operation,
+          message.payload
+        ] : [
+          AUTH_CONTEXT,
+          "response",
+          message.requestId,
+          message.requestMac,
+          message.ok === true,
+          message.ok === true ? message.result : null,
+          message.ok === true ? null : StringConstructor(message.error || "Relay request failed")
+        ]
+      );
+    }
+    function hexToBytes5(value) {
+      const bytes4 = new Uint8ArrayConstructor(value.length / 2);
+      for (let index = 0; index < bytes4.length; index += 1) {
+        bytes4[index] = parseHex(
+          sliceString(value, index * 2, index * 2 + 2),
+          16
+        );
+      }
+      return bytes4;
+    }
+    function bytesToHex5(value) {
+      const bytes4 = new Uint8ArrayConstructor(value);
+      const digits = "0123456789abcdef";
+      let result = "";
+      for (let index = 0; index < bytes4.length; index += 1) {
+        const byte = bytes4[index];
+        result += digits[byte >>> 4] + digits[byte & 15];
+      }
+      return result;
+    }
+    const keyPromise = importKey(
+      "raw",
+      hexToBytes5(channel),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign", "verify"]
+    );
+    async function signRequest(message) {
+      const key = await keyPromise;
+      return bytesToHex5(
+        await sign(
+          "HMAC",
+          key,
+          encode2(authPayload("request", message))
+        )
+      );
+    }
+    async function verifyResponse(message) {
+      if (!testPattern(MESSAGE_MAC_PATTERN, StringConstructor(message?.mac || ""))) {
+        return false;
+      }
+      const key = await keyPromise;
+      return verify(
+        "HMAC",
+        key,
+        hexToBytes5(message.mac),
+        encode2(authPayload("response", message))
+      );
+    }
+    function createRequestId() {
+      const bytes4 = new Uint8ArrayConstructor(16);
+      getRandomValues(bytes4);
+      const digits = "0123456789abcdef";
+      let result = "";
+      for (let index = 0; index < bytes4.length; index += 1) {
+        const byte = bytes4[index];
+        result += digits[byte >>> 4] + digits[byte & 15];
+      }
+      return result;
+    }
+    async function onMessage(event) {
+      if (event.source !== pageWindow || event.origin !== pageOrigin) {
+        return;
+      }
+      let message;
+      try {
+        message = cloneValue(event.data);
+      } catch {
+        return;
+      }
+      if (!isRecord2(message) || message.source !== RESPONSE_SOURCE || !testPattern(
+        REQUEST_ID_PATTERN,
+        StringConstructor(message.requestId || "")
+      ) || !testPattern(
+        MESSAGE_MAC_PATTERN,
+        StringConstructor(message.requestMac || "")
+      ) || !testPattern(
+        MESSAGE_MAC_PATTERN,
+        StringConstructor(message.mac || "")
+      ) || !pendingHas(message.requestId)) {
+        return;
+      }
+      let authenticated = false;
+      try {
+        authenticated = await verifyResponse(message);
+      } catch {
+        return;
+      }
+      if (!authenticated || !pendingHas(message.requestId)) return;
+      const request2 = pendingGet(message.requestId);
+      if (!request2 || request2.requestMac !== message.requestMac) return;
+      pendingDelete(message.requestId);
+      cancelTimeout(request2.timeoutId);
+      if (message.ok === true) {
+        request2.resolve(cloneValue(message.result));
+      } else {
+        request2.reject(
+          new ErrorConstructor(message.error || "Relay request failed")
+        );
+      }
+    }
+    async function request(operation, payload) {
+      const requestId = createRequestId();
+      const message = {
+        source: REQUEST_SOURCE,
+        requestId,
+        operation,
+        payload: cloneValue(payload)
+      };
+      message.mac = await signRequest(message);
+      return new PromiseConstructor((resolve, reject) => {
+        const timeoutId = scheduleTimeout(
+          () => {
+            pendingDelete(requestId);
+            reject(new ErrorConstructor("Relay request timed out"));
+          },
+          operation === "publish" || operation === "httpGet" ? 12e3 : 4e3
+        );
+        pendingSet(requestId, {
+          resolve,
+          reject,
+          requestMac: message.mac,
+          timeoutId
+        });
+        postMessage(message, pageOrigin);
+      });
+    }
+    addEventListener("message", onMessage);
+    return Object.freeze({
+      query: (relays, filter) => request("query", { relays, filter }),
+      getCachedLikeState: (relays, url) => request("getCachedLikeState", { relays, url }),
+      getLikeState: (relays, url) => request("getLikeState", { relays, url }),
+      publish: (relays, event) => request("publish", { relays, event }),
+      httpGet: (url) => request("httpGet", { url })
     });
   }
+  function createRelayChannels(cryptoImpl = globalThis.crypto) {
+    const createChannel = () => {
+      const bytes4 = new Uint8Array(32);
+      cryptoImpl.getRandomValues(bytes4);
+      const digits = "0123456789abcdef";
+      let result = "";
+      for (let index = 0; index < bytes4.length; index += 1) {
+        const byte = bytes4[index];
+        result += digits[byte >>> 4] + digits[byte & 15];
+      }
+      return result;
+    };
+    return {
+      relayChannel: createChannel(),
+      hydrationChannel: createChannel()
+    };
+  }
+
+  // browser-extension/src/components.ts
+  var { relayChannel, hydrationChannel } = createRelayChannels();
+  installRelayTransport(createMainRelayTransport(relayChannel));
+  installComponentHydrator({ channel: hydrationChannel });
+  document.dispatchEvent(
+    new CustomEvent(RELAY_BOOTSTRAP_EVENT, {
+      detail: Object.freeze({ relayChannel, hydrationChannel })
+    })
+  );
 })();
 /*! Bundled license information:
 
