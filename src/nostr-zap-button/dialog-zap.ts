@@ -82,9 +82,8 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
   }
   
   if (cachedDialogComponent) {
-    // Find the actual dialog element
-    const cachedDialog = document.querySelector('.nostr-base-dialog') as HTMLDialogElement | null;
-    if (cachedDialog) {
+    const cachedDialog = cachedDialogComponent.getDialogElement();
+    if (cachedDialog?.isConnected && cachedDialog.open) {
       // remove success class if it exists
       cachedDialog.classList.remove('success');
       // show all controls that might have been hidden
@@ -102,7 +101,6 @@ export async function init(params: OpenZapModalParams): Promise<DialogComponent>
         successOverlay.style.pointerEvents = 'none';
       }
 
-      void refreshUI(cachedDialog);
       cachedDialogComponent.showModal();
       return cachedDialogComponent;
     }

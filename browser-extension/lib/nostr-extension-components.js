@@ -26765,8 +26765,8 @@ ${url}`;
       await customElements.whenDefined("dialog-component");
     }
     if (cachedDialogComponent) {
-      const cachedDialog = document.querySelector(".nostr-base-dialog");
-      if (cachedDialog) {
+      const cachedDialog = cachedDialogComponent.getDialogElement();
+      if (cachedDialog?.isConnected && cachedDialog.open) {
         cachedDialog.classList.remove("success");
         const controls = cachedDialog.querySelectorAll(".amount-buttons, .update-zap-container, .comment-container, .cta-btn, .copy-btn");
         controls.forEach((el) => {
@@ -26779,7 +26779,6 @@ ${url}`;
           successOverlay.style.opacity = "0";
           successOverlay.style.pointerEvents = "none";
         }
-        void refreshUI(cachedDialog);
         cachedDialogComponent.showModal();
         return cachedDialogComponent;
       }
@@ -28162,13 +28161,18 @@ ${url}`;
     attributeChangedCallback(name, oldValue, newValue) {
       if (oldValue === newValue) return;
       super.attributeChangedCallback(name, oldValue, newValue);
+      if (name === "npub" || name === "url" || name === "relays" || name === "amount" || name === "default-amount") {
+        this.#closeCachedAmountDialog();
+      }
       this.render();
     }
     disconnectedCallback() {
       super.disconnectedCallback?.();
-      if (this.cachedAmountDialog && typeof this.cachedAmountDialog.close === "function") {
-        this.cachedAmountDialog.close();
-      }
+      this.#closeCachedAmountDialog();
+    }
+    #closeCachedAmountDialog() {
+      this.cachedAmountDialog?.close();
+      this.cachedAmountDialog = null;
     }
     /** Base class functions */
     onStatusChange(_status) {

@@ -69,18 +69,26 @@ export default class NostrZap extends NostrUserComponent {
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
     if (oldValue === newValue) return;
     super.attributeChangedCallback(name, oldValue, newValue);
-    // TODO: To handle text, amount, and default-amount changes?
+    if (
+      name === 'npub' ||
+      name === 'url' ||
+      name === 'relays' ||
+      name === 'amount' ||
+      name === 'default-amount'
+    ) {
+      this.#closeCachedAmountDialog();
+    }
     this.render();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback?.();
-    if (
-      this.cachedAmountDialog &&
-      typeof this.cachedAmountDialog.close === "function"
-    ) {
-      this.cachedAmountDialog.close();
-    }
+    this.#closeCachedAmountDialog();
+  }
+
+  #closeCachedAmountDialog() {
+    this.cachedAmountDialog?.close();
+    this.cachedAmountDialog = null;
   }
 
   /** Base class functions */
