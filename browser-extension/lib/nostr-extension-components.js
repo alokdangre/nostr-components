@@ -374,7 +374,7 @@
           createDebug6.namespaces = namespaces;
           createDebug6.names = [];
           createDebug6.skips = [];
-          const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(/\s+/g, ",").split(",").filter(Boolean);
+          const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(" ", ",").split(",").filter(Boolean);
           for (const ns of split) {
             if (ns[0] === "-") {
               createDebug6.skips.push(ns.slice(1));
@@ -592,7 +592,7 @@
       function load() {
         let r;
         try {
-          r = exports.storage.getItem("debug") || exports.storage.getItem("DEBUG");
+          r = exports.storage.getItem("debug");
         } catch (error) {
         }
         if (!r && typeof process !== "undefined" && "env" in process) {
@@ -28109,22 +28109,25 @@ ${url}`;
     if (!like) {
       like = constructRegisteredElement(registry, "nostr-like-button");
       if (!like) return false;
+      setCommonAttributes(like, slot);
       slot.appendChild(like);
+    } else {
+      setCommonAttributes(like, slot);
     }
-    setCommonAttributes(like, slot);
     const recipientNpub = slot.dataset.recipientNpub || slot.dataset.zapRecipientNpub || "";
     let zap = slot.querySelector("nostr-zap-button");
     if (!recipientNpub) {
       zap?.remove();
       return true;
     }
-    if (!zap) {
+    const shouldAppendZap = !zap;
+    if (shouldAppendZap) {
       zap = constructRegisteredElement(registry, "nostr-zap-button");
       if (!zap) return false;
-      slot.appendChild(zap);
     }
     setCommonAttributes(zap, slot);
     zap.setAttribute("npub", recipientNpub);
+    if (shouldAppendZap) slot.appendChild(zap);
     return true;
   }
   function installComponentHydrator({

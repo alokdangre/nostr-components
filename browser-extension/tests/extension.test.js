@@ -179,6 +179,56 @@ describe('Zap action integration', function () {
     };
   });
 
+  it('sets Zap attributes before connecting a newly constructed component', function () {
+    const slot = new FakeElement('div');
+    Object.assign(slot.dataset, {
+      nostrYoutubeAction: 'true',
+      statusUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      theme: 'dark',
+      recipientNpub: recipientNpub
+    });
+    const connectionSnapshots = [];
+    const appendChild = slot.appendChild.bind(slot);
+    slot.appendChild = function (child) {
+      if (child.tagName === 'nostr-zap-button') {
+        connectionSnapshots.push({ ...child.attributes });
+      }
+      return appendChild(child);
+    };
+
+    class RegisteredLike extends FakeElement {
+      constructor() {
+        super('nostr-like-button');
+      }
+    }
+    class RegisteredZap extends FakeElement {
+      constructor() {
+        super('nostr-zap-button');
+      }
+    }
+    const constructors = new Map([
+      ['nostr-like-button', RegisteredLike],
+      ['nostr-zap-button', RegisteredZap]
+    ]);
+
+    expect(
+      hydrateActionSlot(slot, {
+        get(tagName) {
+          return constructors.get(tagName);
+        }
+      })
+    ).toBe(true);
+    expect(connectionSnapshots).toEqual([
+      {
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        compact: '',
+        'data-theme': 'dark',
+        'data-surface': 'youtube',
+        npub: recipientNpub
+      }
+    ]);
+  });
+
   it('adds X Zap only for a verified zappable directory identity', function () {
     const action = extension.dom.createNostrAction(
       {

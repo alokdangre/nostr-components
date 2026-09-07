@@ -40,9 +40,11 @@ export function hydrateActionSlot(slot, registry = globalThis.customElements) {
   if (!like) {
     like = constructRegisteredElement(registry, 'nostr-like-button');
     if (!like) return false;
+    setCommonAttributes(like, slot);
     slot.appendChild(like);
+  } else {
+    setCommonAttributes(like, slot);
   }
-  setCommonAttributes(like, slot);
 
   const recipientNpub =
     slot.dataset.recipientNpub || slot.dataset.zapRecipientNpub || '';
@@ -52,13 +54,14 @@ export function hydrateActionSlot(slot, registry = globalThis.customElements) {
     return true;
   }
 
-  if (!zap) {
+  const shouldAppendZap = !zap;
+  if (shouldAppendZap) {
     zap = constructRegisteredElement(registry, 'nostr-zap-button');
     if (!zap) return false;
-    slot.appendChild(zap);
   }
   setCommonAttributes(zap, slot);
   zap.setAttribute('npub', recipientNpub);
+  if (shouldAppendZap) slot.appendChild(zap);
   return true;
 }
 
