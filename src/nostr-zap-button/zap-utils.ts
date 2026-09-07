@@ -86,7 +86,7 @@ export const getProfileMetadata = async (authorId: string, relays?: string[]) =>
         .sort(
           (left, right) =>
             right.created_at - left.created_at ||
-            right.id.localeCompare(left.id),
+            left.id.localeCompare(right.id),
         )[0] || null;
     if (event) profileCache.set(cacheKey, event);
     return event;
@@ -128,7 +128,7 @@ function cacheVerifiedProfiles(
       !cached ||
       verifiedEvent.created_at > cached.created_at ||
       (verifiedEvent.created_at === cached.created_at &&
-        verifiedEvent.id > cached.id)
+        verifiedEvent.id < cached.id)
     ) {
       profileCache.set(cacheKey, verifiedEvent);
     }

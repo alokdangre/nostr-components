@@ -84,6 +84,41 @@ describe('Zap component relay transport', () => {
     await expect(getProfileMetadata(profile.pubkey, relays)).resolves.toBeNull();
   });
 
+  it('uses the lowest event id for equal-timestamp replaceable profiles', async () => {
+    const directProfiles = [
+      makeProfileEvent(63, { name: 'Direct A' }, 100),
+      makeProfileEvent(63, { name: 'Direct B' }, 100),
+    ].sort((left, right) => left.id.localeCompare(right.id));
+    const batchedProfiles = [
+      makeProfileEvent(64, { name: 'Batch A' }, 200),
+      makeProfileEvent(64, { name: 'Batch B' }, 200),
+    ].sort((left, right) => left.id.localeCompare(right.id));
+    const query = vi.fn(
+      async (_relays: string[], filter: { authors: string[] }) =>
+        filter.authors.includes(directProfiles[0].pubkey)
+          ? [...directProfiles].reverse()
+          : [...batchedProfiles].reverse(),
+    );
+    Object.assign(globalThis, {
+      __nostrComponentsRelayTransport: { query, publish: vi.fn() },
+    });
+
+    await expect(
+      getProfileMetadata(directProfiles[0].pubkey, [
+        'wss://profile-tie-direct.example',
+      ]),
+    ).resolves.toMatchObject({ id: directProfiles[0].id });
+    await expect(
+      getBatchedProfileMetadata([batchedProfiles[0].pubkey], [
+        'wss://profile-tie-batch.example',
+      ]),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        profile: expect.objectContaining({ id: batchedProfiles[0].id }),
+      }),
+    ]);
+  });
+
   it('scopes cached profiles by normalized relay set', async () => {
     const relayA = ['wss://profiles-a.example'];
     const relayB = ['wss://profiles-b.example'];

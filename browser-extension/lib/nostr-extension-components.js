@@ -19725,7 +19725,7 @@
       if (!requestedIds.has(verifiedEvent.pubkey.toLowerCase())) continue;
       const cacheKey = profileCacheKey(verifiedEvent.pubkey, relayList);
       const cached = profileCache.get(cacheKey);
-      if (!cached || verifiedEvent.created_at > cached.created_at || verifiedEvent.created_at === cached.created_at && verifiedEvent.id > cached.id) {
+      if (!cached || verifiedEvent.created_at > cached.created_at || verifiedEvent.created_at === cached.created_at && verifiedEvent.id < cached.id) {
         profileCache.set(cacheKey, verifiedEvent);
       }
     }
@@ -19791,7 +19791,7 @@
             limit: 1
           });
           const event = [...events].map((candidate) => getVerifiedProfileEvent(candidate, authorId)).filter((candidate) => candidate !== null).sort(
-            (left, right) => right.created_at - left.created_at || right.id.localeCompare(left.id)
+            (left, right) => right.created_at - left.created_at || left.id.localeCompare(right.id)
           )[0] || null;
           if (event) profileCache.set(cacheKey, event);
           return event;
