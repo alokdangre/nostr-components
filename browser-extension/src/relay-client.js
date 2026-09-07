@@ -719,7 +719,11 @@ import { decode as decodeBolt11 } from 'light-bolt11-decoder';
         );
       })
       .sort(function (left, right) {
-        return right.created_at - left.created_at;
+        const timestampOrder = right.created_at - left.created_at;
+        if (timestampOrder !== 0) return timestampOrder;
+        if (left.id < right.id) return -1;
+        if (left.id > right.id) return 1;
+        return 0;
       });
     const lnurl = profiles.length > 0
       ? profileLnurl(profiles[0].content)

@@ -1973,15 +1973,32 @@ describe('CSP-safe component and relay integration', function () {
       }
     };
     const recipientSecret = new Uint8Array(32).fill(12);
-    const profile = finalizeEvent(
-      {
-        kind: 0,
-        created_at: 10,
-        tags: [],
-        content: JSON.stringify({ lud16: 'alice@ln.example' })
-      },
-      recipientSecret
+    const profiles = [
+      finalizeEvent(
+        {
+          kind: 0,
+          created_at: 10,
+          tags: [],
+          content: JSON.stringify({ lud16: 'alice@ln-a.example' })
+        },
+        recipientSecret
+      ),
+      finalizeEvent(
+        {
+          kind: 0,
+          created_at: 10,
+          tags: [],
+          content: JSON.stringify({ lud16: 'alice@ln-b.example' })
+        },
+        recipientSecret
+      )
+    ].sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0
     );
+    const profile = profiles[0];
+    const canonicalDomain = JSON.parse(profile.content).lud16.split('@')[1];
+    const canonicalLnurl =
+      'https://' + canonicalDomain + '/.well-known/lnurlp/alice';
     const recipientNpub = nip19.npubEncode(profile.pubkey);
     const contentUrl = 'https://x.com/alice/status/42';
     const amount = BOLT11_20U_AMOUNT_MSATS;
@@ -2043,7 +2060,8 @@ describe('CSP-safe component and relay integration', function () {
     const pool = {
       subscribe(_relays, _filter, options) {
         queueMicrotask(function () {
-          options.onevent(profile);
+          options.onevent(profiles[1]);
+          options.onevent(profiles[0]);
           options.oneose();
         });
         return { close: vi.fn(async function () {}) };
@@ -2115,7 +2133,7 @@ describe('CSP-safe component and relay integration', function () {
     expect(responses[0].result).toEqual({
       invoice: BOLT11_20U,
       provider: {
-        lnurl: 'https://ln.example/.well-known/lnurlp/alice',
+        lnurl: canonicalLnurl,
         callback: 'https://ln.example/callback',
         nostrPubkey: 'f'.repeat(64)
       }
@@ -2124,6 +2142,7 @@ describe('CSP-safe component and relay integration', function () {
     expect(responses[1].error).toContain('no longer active');
     expect(responses[2].ok).toBe(false);
     expect(backgroundRequests).toHaveLength(4);
+    expect(backgroundRequests[0].url).toBe(canonicalLnurl);
     expect(backgroundRequests[1].url).toContain('amount=' + amount);
     expect(backgroundRequests[1].url).toContain(
       'nostr=' + encodeURIComponent(JSON.stringify(zapEvent))
