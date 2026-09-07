@@ -28356,6 +28356,7 @@ ${url}`;
           "response",
           message.requestId,
           message.requestMac,
+          message.operation,
           message.ok === true,
           message.ok === true ? message.result : null,
           message.ok === true ? null : StringConstructor(message.error || "Relay request failed")
@@ -28441,7 +28442,11 @@ ${url}`;
       ) || !testPattern(
         MESSAGE_MAC_PATTERN,
         StringConstructor(message.mac || "")
-      ) || !pendingHas(message.requestId)) {
+      ) || typeof message.operation !== "string" || !pendingHas(message.requestId)) {
+        return;
+      }
+      const request2 = pendingGet(message.requestId);
+      if (!request2 || request2.operation !== message.operation || request2.requestMac !== message.requestMac) {
         return;
       }
       let authenticated = false;
@@ -28450,9 +28455,9 @@ ${url}`;
       } catch {
         return;
       }
-      if (!authenticated || !pendingHas(message.requestId)) return;
-      const request2 = pendingGet(message.requestId);
-      if (!request2 || request2.requestMac !== message.requestMac) return;
+      if (!authenticated || pendingGet(message.requestId) !== request2) {
+        return;
+      }
       pendingDelete(message.requestId);
       cancelTimeout(request2.timeoutId);
       if (message.ok === true) {
@@ -28481,6 +28486,7 @@ ${url}`;
           operation === "publish" || operation === "httpGet" ? 12e3 : 4e3
         );
         pendingSet(requestId, {
+          operation,
           resolve,
           reject,
           requestMac: message.mac,

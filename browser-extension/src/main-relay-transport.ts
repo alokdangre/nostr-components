@@ -24,6 +24,7 @@ interface MainRelayTransportOptions {
 }
 
 interface PendingRequest {
+  operation: string;
   requestMac: string;
   timeoutId: ReturnType<typeof setTimeout>;
   resolve: (value: any) => void;
@@ -162,6 +163,7 @@ export function createMainRelayTransport(
             'response',
             message.requestId,
             message.requestMac,
+            message.operation,
             message.ok === true,
             message.ok === true ? message.result : null,
             message.ok === true
@@ -266,7 +268,17 @@ export function createMainRelayTransport(
         MESSAGE_MAC_PATTERN,
         StringConstructor(message.mac || ''),
       ) ||
+      typeof message.operation !== 'string' ||
       !pendingHas(message.requestId)
+    ) {
+      return;
+    }
+
+    const request = pendingGet(message.requestId);
+    if (
+      !request ||
+      request.operation !== message.operation ||
+      request.requestMac !== message.requestMac
     ) {
       return;
     }
@@ -277,10 +289,12 @@ export function createMainRelayTransport(
     } catch {
       return;
     }
-    if (!authenticated || !pendingHas(message.requestId)) return;
-
-    const request = pendingGet(message.requestId);
-    if (!request || request.requestMac !== message.requestMac) return;
+    if (
+      !authenticated ||
+      pendingGet(message.requestId) !== request
+    ) {
+      return;
+    }
     pendingDelete(message.requestId);
     cancelTimeout(request.timeoutId);
     if (message.ok === true) {
@@ -311,6 +325,7 @@ export function createMainRelayTransport(
         operation === 'publish' || operation === 'httpGet' ? 12_000 : 4_000,
       );
       pendingSet(requestId, {
+        operation,
         resolve,
         reject,
         requestMac: message.mac,

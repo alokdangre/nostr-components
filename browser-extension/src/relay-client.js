@@ -92,6 +92,7 @@ import { normalizeURL } from 'nostr-tools/utils';
       'response',
       message.requestId,
       message.requestMac,
+      message.operation,
       message.ok === true,
       message.ok === true ? message.result : null,
       message.ok === true ? null : String(message.error || 'Relay request failed')
@@ -772,6 +773,7 @@ import { normalizeURL } from 'nostr-tools/utils';
           source: RESPONSE_SOURCE,
           requestId: message.requestId,
           requestMac: message.mac,
+          operation: message.operation,
           ok: true,
           result: await handleRequest(pool, message)
         };
@@ -780,6 +782,7 @@ import { normalizeURL } from 'nostr-tools/utils';
           source: RESPONSE_SOURCE,
           requestId: message.requestId,
           requestMac: message.mac,
+          operation: message.operation,
           ok: false,
           error: error instanceof Error ? error.message : 'Relay request failed'
         };

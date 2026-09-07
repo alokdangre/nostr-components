@@ -1067,6 +1067,7 @@ describe('CSP-safe component and relay integration', function () {
       source: 'nostr-components-relay-extension',
       requestId: requestMessage.requestId,
       requestMac: 'f'.repeat(64),
+      operation: 'httpGet',
       ok: true,
       result: { status: 200, json: { pr: 'lnbc1replayed' } }
     };
@@ -1084,10 +1085,30 @@ describe('CSP-safe component and relay integration', function () {
     await Promise.resolve();
     expect(requestSettled).toBe(false);
 
+    const wrongOperationResponse = {
+      source: 'nostr-components-relay-extension',
+      requestId: requestMessage.requestId,
+      requestMac: requestMessage.mac,
+      operation: 'query',
+      ok: true,
+      result: { status: 200, json: { pr: 'lnbc1wrongoperation' } }
+    };
+    wrongOperationResponse.mac = await authenticator.signResponse(
+      wrongOperationResponse
+    );
+    await responseHandler({
+      source: pageWindow,
+      origin: 'https://x.com',
+      data: wrongOperationResponse
+    });
+    await Promise.resolve();
+    expect(requestSettled).toBe(false);
+
     const relayResponse = {
       source: 'nostr-components-relay-extension',
       requestId: requestMessage.requestId,
       requestMac: requestMessage.mac,
+      operation: 'httpGet',
       ok: true,
       result: { status: 200, json: { pr: 'lnbc1original' } }
     };
